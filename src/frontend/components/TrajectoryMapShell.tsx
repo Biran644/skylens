@@ -1,6 +1,15 @@
 "use client";
 
-import { AnalysisSummary, Conflict, Flight } from "../../backend/types/domain";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AnalysisSummary,
+  Conflict,
+  Flight,
+  TrajectoryMapData,
+} from "../../backend/types/domain";
+import { TrajectoryDeckMap, type LayerKey } from "./TrajectoryDeckMap";
+
+const layers: LayerKey[] = ["Trajectories", "Conflicts", "Hotspots"];
 
 const MINUTES_PER_DAY = 24 * 60;
 
@@ -26,6 +35,7 @@ type TrajectoryMapShellProps = {
   flights?: Flight[] | null;
   summary?: AnalysisSummary | null;
   conflicts?: Conflict[] | null;
+  mapData?: TrajectoryMapData | null;
   timelinePoints?: { minute: number; count: number }[];
   timelineMax?: number;
 };
@@ -34,14 +44,62 @@ export function TrajectoryMapShell({
   flights,
   summary,
   conflicts,
+  mapData,
   timelinePoints,
   timelineMax = 0,
 }: TrajectoryMapShellProps) {
-  const totalFlights = summary?.flights ?? flights?.length ?? 0;
+  const [activeLayers, setActiveLayers] = useState<LayerKey[]>([
+    "Trajectories",
+    "Conflicts",
+  ]);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleLayer = useCallback((layer: LayerKey) => {
+    setActiveLayers((prev) =>
+      prev.includes(layer)
+        ? prev.filter((item) => item !== layer)
+        : [...prev, layer],
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!isFullscreen || typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsFullscreen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isFullscreen]);
+
+  const totalFlights = flights?.length ?? 0;
   const totalSegments = summary?.segments ?? 0;
   const totalSamples = summary?.samples ?? 0;
   const conflictCount = summary?.conflicts ?? conflicts?.length ?? 0;
   const hasData = totalFlights > 0;
+  const viewState = mapData?.viewState;
+  const pathCount = mapData?.paths?.length ?? 0;
+  const markerCount = mapData?.conflictMarkers?.length ?? 0;
+
+  const mapIdentity = useMemo(() => {
+    if (!viewState) {
+      return `no-map|${pathCount}|${markerCount}`;
+    }
+    return [
+      viewState.longitude?.toFixed(2) ?? "-",
+      viewState.latitude?.toFixed(2) ?? "-",
+      viewState.zoom?.toFixed(2) ?? "-",
+      pathCount,
+      markerCount,
+    ].join("|");
+  }, [viewState, pathCount, markerCount]);
   const topFlights = [...(flights ?? [])]
     .sort((a, b) => b.segments.length - a.segments.length)
     .slice(0, 5);
@@ -56,6 +114,7 @@ export function TrajectoryMapShell({
         timelineBuckets[0],
       )
     : null;
+  const activeMinute = timelineHasData ? (peakTimeline?.minute ?? null) : null;
   const highlightCenter = peakTimeline
     ? (peakTimeline.minute / MINUTES_PER_DAY) * 100
     : 0;
@@ -73,30 +132,64 @@ export function TrajectoryMapShell({
         <div>
           <h2 className="text-lg font-semibold text-white">Trajectory Map</h2>
           <p className="text-xs text-[var(--color-muted)]">
-            Map visualization pending; backend map data bundle is ready for use.
+            Explore trajectories, conflict markers, and hotspot density.
+            Double-click the map to expand view or use the controls to launch a
+            dedicated window.
           </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <button
+            type="button"
+            onClick={() => hasData && setIsFullscreen(true)}
+            disabled={!hasData}
+            className={`rounded border px-3 py-1 font-medium transition ${
+              hasData
+                ? "border-[var(--color-azure)] bg-[var(--color-azure-soft)] text-[var(--color-azure)] hover:bg-[rgba(0,159,223,0.2)]"
+                : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-muted)]"
+            }`}
+          >
+            🔎 Expand view
+          </button>
         </div>
       </header>
 
+      <div className="mt-4 flex flex-wrap gap-2 text-xs">
+        {layers.map((layer) => {
+          const active = activeLayers.includes(layer);
+          return (
+            <button
+              key={layer}
+              type="button"
+              onClick={() => toggleLayer(layer)}
+              className={`rounded-full border px-3 py-1 font-medium transition ${
+                active
+                  ? "border-[var(--color-azure)] bg-[var(--color-azure-soft)] text-[var(--color-azure)]"
+                  : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-azure)] hover:text-white"
+              }`}
+            >
+              {layer}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="mt-6 flex flex-1 flex-col gap-4">
-        <div className="relative flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-10 text-center text-sm text-[var(--color-subtle)]">
+        <div
+          className="relative min-h-[360px] flex-1 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+          onDoubleClick={() => hasData && setIsFullscreen(true)}
+        >
           {hasData ? (
-            <div className="mx-auto max-w-xl space-y-2">
-              <p className="text-base font-semibold text-white">
-                Interactive map integration in progress
-              </p>
-              <p>
-                Backend now provides map-ready data: normalized trajectory
-                paths, conflict markers, timeline buckets, and a default view
-                state. Frontend teammates can consume
-                AnalyzeConflictsResult.mapData when wiring the final deck.gl or
-                MapLibre layers.
-              </p>
-              <p className="text-[11px] text-[var(--color-muted)]">
-                Temporary placeholder rendered until custom map implementation
-                lands.
-              </p>
-            </div>
+            <>
+              <TrajectoryDeckMap
+                key={`trajectory-map-inline-${mapIdentity}`}
+                mapData={mapData}
+                activeLayers={activeLayers}
+                activeMinute={activeMinute}
+              />
+              <div className="pointer-events-none absolute top-3 right-3 rounded bg-[rgba(2,25,48,0.78)] px-3 py-1 text-[11px] text-[var(--color-muted)]">
+                Double-click to expand • Use +/- controls for zoom
+              </div>
+            </>
           ) : (
             <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[var(--color-subtle)]">
               Import flights to populate trajectory insights.
@@ -105,8 +198,8 @@ export function TrajectoryMapShell({
         </div>
 
         {hasData ? (
-          <div className="flex w-full flex-col gap-4 text-left">
-            <div className="flex flex-wrap gap-4 text-xs text-[var(--color-muted)]">
+          <>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-muted)]">
               <span className="rounded border border-[var(--color-border)] bg-[rgba(0,159,223,0.1)] px-3 py-1 text-[var(--color-azure)]">
                 {totalFlights.toLocaleString("en-US")} flights
               </span>
@@ -205,7 +298,7 @@ export function TrajectoryMapShell({
                 </p>
               )}
             </div>
-          </div>
+          </>
         ) : null}
       </div>
 
@@ -246,6 +339,35 @@ export function TrajectoryMapShell({
           <span>24:00Z</span>
         </div>
       </footer>
+
+      {isFullscreen && hasData ? (
+        <div className="fixed inset-0 z-[60] bg-[rgba(3,7,18,0.92)] backdrop-blur">
+          <div className="absolute right-6 top-6 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setIsFullscreen(false)}
+              className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1 text-sm text-white transition hover:border-[var(--color-azure)] hover:text-[var(--color-azure)]"
+            >
+              ✕ Close (Esc)
+            </button>
+          </div>
+          <div className="flex h-full w-full items-center justify-center p-8">
+            <div className="h-full w-full max-w-[1600px]">
+              <div
+                className="relative h-full w-full overflow-hidden rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]"
+                onDoubleClick={() => setIsFullscreen(false)}
+              >
+                <TrajectoryDeckMap
+                  key={`trajectory-map-fullscreen-${mapIdentity}`}
+                  mapData={mapData}
+                  activeLayers={activeLayers}
+                  activeMinute={activeMinute}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

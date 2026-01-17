@@ -109,6 +109,7 @@ export function HomeDashboard() {
       summary={analysis?.summary}
       flights={analysis?.flights}
       conflicts={analysis?.conflicts}
+      mapData={analysis?.mapData}
       timelinePoints={conflictTimeline?.points}
       timelineMax={conflictTimeline?.maxCount ?? 0}
     />

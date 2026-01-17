@@ -19,6 +19,8 @@
   --color-text: #f4fbff;
   --color-muted: rgba(212, 235, 255, 0.72);
   --color-subtle: rgba(150, 185, 215, 0.58);
+  --color-success: #45d483;
+  --color-warning: #f7c948;
 }
 
 body {
