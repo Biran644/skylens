@@ -2,10 +2,21 @@
 
 import { ChangeEvent, useState, useTransition } from "react";
 import { ingestFlightsAction } from "../../backend/actions/ingestFlights";
+import {
+  AnalyzeConflictsResult,
+  analyzeConflictsAction,
+} from "../../backend/actions/analyzeConflicts";
 
-export function FlightImportPanel() {
+type FlightImportPanelProps = {
+  onAnalysis?: (result: AnalyzeConflictsResult) => void;
+};
+
+export function FlightImportPanel({ onAnalysis }: FlightImportPanelProps) {
   const [inputText, setInputText] = useState("");
   const [parsedCount, setParsedCount] = useState<number | null>(null);
+  const [analysisSummary, setAnalysisSummary] = useState<
+    AnalyzeConflictsResult["summary"] | null
+  >(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -33,11 +44,21 @@ export function FlightImportPanel() {
     startTransition(async () => {
       try {
         const result = await ingestFlightsAction(inputText);
+        if (result.count === 0) {
+          setParsedCount(null);
+          setAnalysisSummary(null);
+          setError("No flights detected in provided data");
+          return;
+        }
+
+        const analysis = await analyzeConflictsAction(result.flights);
         setParsedCount(result.count);
+        setAnalysisSummary(analysis.summary);
         setError(null);
-        console.log("Ingested flights", result);
+        onAnalysis?.(analysis);
       } catch (err) {
         setParsedCount(null);
+        setAnalysisSummary(null);
         setError(
           err instanceof Error ? err.message : "Failed to ingest flights",
         );
@@ -93,6 +114,9 @@ export function FlightImportPanel() {
         {parsedCount !== null && !error ? (
           <span className="text-xs text-[#5be7a9]">
             Loaded {parsedCount} flights
+            {analysisSummary
+              ? ` · ${analysisSummary.averageSegmentsPerFlight.toFixed(1)} segments/flight · ${analysisSummary.conflicts.toLocaleString("en-US")} conflicts`
+              : ""}
           </span>
         ) : null}
 

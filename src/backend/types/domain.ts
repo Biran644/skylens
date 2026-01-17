@@ -117,3 +117,53 @@ export type ResolutionResult = {
   remainingConflicts: Conflict[];
   newConflicts: Conflict[];
 };
+
+export type AnalysisSummary = {
+  flights: number;
+  segments: number;
+  samples: number;
+  averageSegmentsPerFlight: number;
+  averageSamplesPerFlight: number;
+  conflicts: number;
+  conflictSamples: number;
+};
+
+export type TimelineBucket = {
+  minute: number;
+  count: number;
+};
+
+export type TrajectoryMapPath = {
+  id: string;
+  callsign: string;
+  passengers: number;
+  isCargo: boolean;
+  coordinates: [number, number][];
+};
+
+export type TrajectoryMapConflictPoint = {
+  id: string;
+  flights: [string, string];
+  coordinate: [number, number];
+  tSec: number;
+  minute: number;
+  horizontalNm: number;
+  verticalFt: number;
+};
+
+export type TrajectoryMapViewState = {
+  longitude: number;
+  latitude: number;
+  zoom: number;
+  pitch: number;
+  bearing: number;
+};
+
+export type TrajectoryMapData = {
+  paths: TrajectoryMapPath[];
+  conflictMarkers: TrajectoryMapConflictPoint[];
+  timeline: TimelineBucket[];
+  timelineMax: number;
+  viewState: TrajectoryMapViewState;
+  temporalExtent: { min: number; max: number } | null;
+};

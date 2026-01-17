@@ -1,3 +1,5 @@
+"use client";
+
 import { ReactNode } from "react";
 import { TopNav } from "./TopNav";
 
@@ -6,6 +8,8 @@ type DashboardLayoutProps = {
   mapArea: ReactNode;
   rightColumn: ReactNode;
   bottomDrawer?: ReactNode;
+  scenarioName: string;
+  lastRun: string;
 };
 
 export function DashboardLayout({
@@ -13,10 +17,12 @@ export function DashboardLayout({
   mapArea,
   rightColumn,
   bottomDrawer,
+  scenarioName,
+  lastRun,
 }: DashboardLayoutProps) {
   return (
     <div className="flex min-h-screen flex-col text-[var(--color-text)]">
-      <TopNav />
+      <TopNav scenarioName={scenarioName} lastRun={lastRun} />
 
       <div className="flex flex-1 flex-col overflow-hidden px-6 pb-6 pt-4 xl:px-10">
         <div className="grid flex-1 gap-4 overflow-hidden xl:grid-cols-[320px_minmax(0,1fr)_360px]">

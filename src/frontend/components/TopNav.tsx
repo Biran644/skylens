@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+type TopNavProps = {
+  scenarioName: string;
+  lastRun: string;
+};
 
-export function TopNav() {
-  const [scenarioName] = useState("Demo Scenario");
-  const [lastRun] = useState("No analysis yet");
-
+export function TopNav({ scenarioName, lastRun }: TopNavProps) {
   return (
     <header className="sticky top-0 z-30 flex h-20 w-full items-center justify-between border-b border-[var(--color-border-strong)] bg-[var(--color-navy-glass)] px-6 shadow-[0_10px_30px_rgba(0,21,60,0.45)] backdrop-blur xl:px-10">
       <div className="flex items-center gap-4">
