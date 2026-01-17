@@ -107,14 +107,22 @@ export function TrajectoryDeckMap({
   const showConflicts = activeLayers.includes("Conflicts");
   const showHotspots = activeLayers.includes("Hotspots");
 
+  // Séparer les vols en conflit des vols normaux
+  const { conflictPaths, normalPaths } = useMemo(() => {
+    const conflict = paths.filter(p => (p as any).highlightColor);
+    const normal = paths.filter(p => !(p as any).highlightColor);
+    return { conflictPaths: conflict, normalPaths: normal };
+  }, [paths]);
+
+  // Layer pour les trajectoires normales
   const trajectoryLayer = useMemo(() => {
-    if (!showTrajectories || paths.length === 0) {
+    if (!showTrajectories || normalPaths.length === 0) {
       return null;
     }
 
     return new PathLayer<TrajectoryMapPath>({
       id: "trajectory-paths",
-      data: paths,
+      data: normalPaths,
       getPath: (flight) => flight.coordinates,
       getColor: (flight) =>
         flight.isCargo ? [250, 140, 20, 220] : [0, 159, 223, 220],
@@ -127,7 +135,27 @@ export function TrajectoryDeckMap({
       autoHighlight: true,
       highlightColor: [255, 255, 255, 255],
     });
-  }, [paths, showTrajectories]);
+  }, [normalPaths, showTrajectories]);
+
+  // Layers séparés pour les deux vols en conflit (pour bien les distinguer)
+  const conflictFlightLayers = useMemo(() => {
+    if (!showTrajectories || conflictPaths.length === 0) {
+      return [];
+    }
+
+    return conflictPaths.map((flight, index) => {
+      return new PathLayer<TrajectoryMapPath>({
+        id: `conflict-flight-${index}`,
+        data: [flight],
+        getPath: (f) => f.coordinates,
+        getColor: (f) => (f as any).highlightColor,
+        widthUnits: "pixels",
+        getWidth: 5, // Ligne fine mais visible
+        pickable: true,
+        autoHighlight: false,
+      });
+    });
+  }, [conflictPaths, showTrajectories]);
 
   const conflictLayer = useMemo(() => {
     if (!showConflicts || focusMarkers.length === 0) {
@@ -171,10 +199,10 @@ export function TrajectoryDeckMap({
 
   const layers = useMemo(
     () =>
-      [trajectoryLayer, hotspotLayer, conflictLayer].filter(
+      [trajectoryLayer, ...conflictFlightLayers, hotspotLayer, conflictLayer].filter(
         (layer): layer is NonNullable<typeof layer> => Boolean(layer),
       ),
-    [trajectoryLayer, hotspotLayer, conflictLayer],
+    [trajectoryLayer, conflictFlightLayers, hotspotLayer, conflictLayer],
   );
 
   const zoomBy = (delta: number) => {

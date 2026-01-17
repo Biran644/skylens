@@ -18,6 +18,7 @@ export function HomeDashboard() {
     ResolutionCandidate[]
   >([]);
   const [isScoring, startScoring] = useTransition();
+  const [selectedConflictId, setSelectedConflictId] = useState<string | null>(null);
   const scenarioName = "Demo Scenario";
 
   const formatTimestamp = (date: Date) =>
@@ -112,6 +113,7 @@ export function HomeDashboard() {
       mapData={analysis?.mapData}
       timelinePoints={conflictTimeline?.points}
       timelineMax={conflictTimeline?.maxCount ?? 0}
+      selectedConflictId={selectedConflictId}
     />
   );
   const rightColumn = (
@@ -121,6 +123,7 @@ export function HomeDashboard() {
       conflicts={analysis?.conflicts}
       resolutionCandidates={resolutionCandidates}
       scoringResolutions={isScoring}
+      onConflictSelect={setSelectedConflictId}
     />
   );
   const bottomDrawer = (

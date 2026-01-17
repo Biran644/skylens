@@ -14,6 +14,7 @@ type InsightsSidebarProps = {
   conflicts?: Conflict[] | null;
   resolutionCandidates?: ResolutionCandidate[] | null;
   scoringResolutions?: boolean;
+  onConflictSelect?: (conflictId: string | null) => void;
 };
 
 type TabKey = "Conflicts" | "Solutions";
@@ -62,6 +63,7 @@ export function InsightsSidebar({
   conflicts,
   resolutionCandidates,
   scoringResolutions,
+  onConflictSelect,
 }: InsightsSidebarProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("Conflicts");
   const [selectedConflictId, setSelectedConflictId] = useState<string | null>(
@@ -163,6 +165,7 @@ export function InsightsSidebar({
       setConflictPage(targetPage);
     }
     setSelectedConflictId(conflict.id);
+    onConflictSelect?.(conflict.id);
   };
 
   const handleResolutionSelect = (candidate: ResolutionCandidate) => {
@@ -375,7 +378,8 @@ export function InsightsSidebar({
                                 )}{" "}
                                 samples · min sep{" "}
                                 {conflict.minHorizontalNm.toFixed(2)} nm /{" "}
-                                {conflict.minVerticalFt.toFixed(0)} ft
+                                {conflict.minVerticalFt.toFixed(0)} ft ·{" "}
+                                {formatZuluTime(conflict.tStart)}Z
                               </p>
                             </div>
                             <div className="flex items-center gap-2 text-[11px] uppercase tracking-wide">
@@ -384,9 +388,6 @@ export function InsightsSidebar({
                                   Solved
                                 </span>
                               ) : null}
-                              <span className="rounded-full border border-[rgba(255,255,255,0.08)] px-2 py-1 text-[var(--color-subtle)]">
-                                {formatZuluTime(conflict.tStart)}Z
-                              </span>
                             </div>
                           </button>
                         </li>

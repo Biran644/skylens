@@ -38,6 +38,7 @@ type TrajectoryMapShellProps = {
   mapData?: TrajectoryMapData | null;
   timelinePoints?: { minute: number; count: number }[];
   timelineMax?: number;
+  selectedConflictId?: string | null;
 };
 
 export function TrajectoryMapShell({
@@ -47,6 +48,7 @@ export function TrajectoryMapShell({
   mapData,
   timelinePoints,
   timelineMax = 0,
+  selectedConflictId,
 }: TrajectoryMapShellProps) {
   const [activeLayers, setActiveLayers] = useState<LayerKey[]>([
     "Trajectories",
@@ -126,6 +128,63 @@ export function TrajectoryMapShell({
     Math.max(0, 100 - highlightWidth),
   );
 
+  // Filtrer les données de la carte si un conflit est sélectionné
+  const filteredMapData = useMemo(() => {
+    if (!selectedConflictId || !mapData || !conflicts) {
+      return mapData;
+    }
+
+    const selectedConflict = conflicts.find(c => c.id === selectedConflictId);
+    if (!selectedConflict) {
+      return mapData;
+    }
+
+    console.log('Selected Conflict:', {
+      flightA: selectedConflict.flightA,
+      flightB: selectedConflict.flightB,
+      allPathIds: mapData.paths?.map(p => ({ id: p.id, callsign: p.callsign }))
+    });
+
+    // Filtrer les trajectoires pour n'afficher que les 2 vols en conflit
+    // et assigner des couleurs distinctes à chaque vol
+    const filteredPaths = mapData.paths?.filter(path => 
+      path.callsign === selectedConflict.flightA || 
+      path.callsign === selectedConflict.flightB
+    ).map((path) => {
+      const isFlightA = path.callsign === selectedConflict.flightA;
+      // Couleurs vives et opaques pour bien les distinguer
+      const color = isFlightA 
+        ? [0, 220, 255, 255] as [number, number, number, number]  // Bleu cyan vif pour Vol A
+        : [255, 60, 100, 255] as [number, number, number, number]; // Rouge vif pour Vol B
+      
+      console.log(`Path ${path.id} (${path.callsign}): isFlightA=${isFlightA}, color=`, color);
+      
+      return {
+        ...path,
+        highlightColor: color,
+      };
+    }) ?? [];
+
+    console.log('Filtered Paths:', filteredPaths.length, 'paths');
+
+    // Créer des marqueurs spécifiques pour les échantillons de conflit sélectionné
+    const conflictMarkers = selectedConflict.samples.map((sample, idx) => ({
+      id: `${selectedConflict.id}-sample-${idx}`,
+      flights: [selectedConflict.flightA, selectedConflict.flightB] as [string, string],
+      coordinate: [sample.lon, sample.lat] as [number, number],
+      tSec: sample.tSec,
+      minute: Math.floor(sample.tSec / 60),
+      horizontalNm: sample.horizontalNm,
+      verticalFt: sample.verticalFt,
+    }));
+
+    return {
+      ...mapData,
+      paths: filteredPaths,
+      conflictMarkers: conflictMarkers,
+    };
+  }, [selectedConflictId, mapData, conflicts]);
+
   return (
     <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-6 shadow-[0_15px_45px_rgba(0,8,22,0.45)]">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -182,7 +241,7 @@ export function TrajectoryMapShell({
             <>
               <TrajectoryDeckMap
                 key={`trajectory-map-inline-${mapIdentity}`}
-                mapData={mapData}
+                mapData={filteredMapData}
                 activeLayers={activeLayers}
                 activeMinute={activeMinute}
               />
@@ -359,7 +418,7 @@ export function TrajectoryMapShell({
               >
                 <TrajectoryDeckMap
                   key={`trajectory-map-fullscreen-${mapIdentity}`}
-                  mapData={mapData}
+                  mapData={filteredMapData}
                   activeLayers={activeLayers}
                   activeMinute={activeMinute}
                 />
