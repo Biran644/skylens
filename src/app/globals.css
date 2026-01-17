@@ -1,26 +1,41 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  color-scheme: dark;
+  --color-canvas: #020b18;
+  --color-canvas-gradient:
+    radial-gradient(circle at 18% 0%, rgba(0, 159, 223, 0.18), transparent 45%),
+    radial-gradient(circle at 80% 20%, rgba(0, 64, 120, 0.28), transparent 55%),
+    linear-gradient(180deg, #031226 0%, #01070f 100%);
+  --color-navy: #002554;
+  --color-navy-glass: rgba(0, 37, 84, 0.92);
+  --color-azure: #009fdf;
+  --color-azure-soft: rgba(0, 159, 223, 0.12);
+  --color-surface: rgba(3, 18, 38, 0.82);
+  --color-panel: rgba(4, 27, 53, 0.88);
+  --color-border: rgba(0, 159, 223, 0.22);
+  --color-border-soft: rgba(0, 159, 223, 0.14);
+  --color-border-strong: rgba(0, 159, 223, 0.35);
+  --color-text: #f4fbff;
+  --color-muted: rgba(212, 235, 255, 0.72);
+  --color-subtle: rgba(150, 185, 215, 0.58);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: var(--color-canvas-gradient);
+  background-color: var(--color-canvas);
+  color: var(--color-text);
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
 }
