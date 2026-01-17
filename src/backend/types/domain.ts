@@ -117,3 +117,13 @@ export type ResolutionResult = {
   remainingConflicts: Conflict[];
   newConflicts: Conflict[];
 };
+
+export type AnalysisSummary = {
+  flights: number;
+  segments: number;
+  samples: number;
+  averageSegmentsPerFlight: number;
+  averageSamplesPerFlight: number;
+  conflicts: number;
+  conflictSamples: number;
+};
