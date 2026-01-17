@@ -1,5 +1,7 @@
 "use client";
 
+import { MissionControlPanel } from "./MissionControlPanel";
+import { MissionControlDashboard } from "./MissionControlDashboard";
 import { useMemo, useState, useTransition } from "react";
 import { AnalyzeConflictsResult } from "../../backend/actions/analyzeConflicts";
 import { scoreResolutionsAction } from "../../backend/actions/scoreResolutions";
@@ -12,6 +14,7 @@ import { TrajectoryMapShell } from "./TrajectoryMapShell";
 import { ResolutionCandidate } from "../../backend/types/domain";
 
 export function HomeDashboard() {
+  const [missionControlOpen, setMissionControlOpen] = useState(false);
   const [analysis, setAnalysis] = useState<AnalyzeConflictsResult | null>(null);
   const [lastRun, setLastRun] = useState<string>("No analysis yet");
   const [resolutionCandidates, setResolutionCandidates] = useState<
@@ -121,6 +124,7 @@ export function HomeDashboard() {
       conflicts={analysis?.conflicts}
       resolutionCandidates={resolutionCandidates}
       scoringResolutions={isScoring}
+      onOpenMissionControl={() => setMissionControlOpen(true)}
     />
   );
   const bottomDrawer = (
@@ -132,6 +136,7 @@ export function HomeDashboard() {
   );
 
   return (
+  <>
     <DashboardLayout
       leftColumn={leftColumn}
       mapArea={mapArea}
@@ -140,7 +145,15 @@ export function HomeDashboard() {
       scenarioName={scenarioName}
       lastRun={lastRun}
     />
-  );
+
+    <MissionControlPanel
+      open={missionControlOpen}
+      onClose={() => setMissionControlOpen(false)}
+    >
+      <MissionControlDashboard />
+    </MissionControlPanel>
+  </>
+);
 }
 
 export default HomeDashboard;
