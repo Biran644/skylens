@@ -9,9 +9,14 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@deck.gl/core": "^9.0.24",
+    "@deck.gl/layers": "^9.0.24",
+    "@deck.gl/react": "^9.0.24",
+    "maplibre-gl": "^3.6.2",
     "next": "16.1.3",
     "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "react-dom": "19.2.3",
+    "react-map-gl": "^7.1.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

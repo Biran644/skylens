@@ -1,6 +1,7 @@
 "use server";
 
 import { buildConflicts, detectConflictSamples } from "../lib/conflicts";
+import { buildTrajectoryMapData } from "../lib/mapData";
 import { sampleFlights } from "../lib/sampling";
 import { buildFlightFromRaw } from "../lib/segments";
 import {
@@ -9,6 +10,7 @@ import {
   ConflictSample,
   Flight,
   RawFlight,
+  TrajectoryMapData,
 } from "../types/domain";
 
 export type AnalyzeConflictsResult = {
@@ -16,6 +18,7 @@ export type AnalyzeConflictsResult = {
   flights: Flight[];
   conflicts: Conflict[];
   conflictSamples: ConflictSample[];
+  mapData: TrajectoryMapData;
 };
 
 export async function analyzeConflictsAction(
@@ -26,6 +29,7 @@ export async function analyzeConflictsAction(
       flights: [],
       conflicts: [],
       conflictSamples: [],
+      mapData: buildTrajectoryMapData(),
       summary: {
         flights: 0,
         segments: 0,
@@ -46,6 +50,7 @@ export async function analyzeConflictsAction(
   const samples = sampleFlights(flights);
   const conflictSamples = detectConflictSamples(samples);
   const conflicts = buildConflicts(conflictSamples);
+  const mapData = buildTrajectoryMapData(flights, conflicts, conflictSamples);
 
   const summary: AnalysisSummary = {
     flights: flights.length,
@@ -61,6 +66,7 @@ export async function analyzeConflictsAction(
     flights,
     conflicts,
     conflictSamples,
+    mapData,
     summary,
   };
 }

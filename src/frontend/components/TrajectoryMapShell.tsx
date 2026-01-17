@@ -1,11 +1,6 @@
 "use client";
 
-import { useState } from "react";
 import { AnalysisSummary, Conflict, Flight } from "../../backend/types/domain";
-
-const layers = ["Trajectories", "Conflicts", "Hotspots", "Airspace"] as const;
-
-type LayerKey = (typeof layers)[number];
 
 const MINUTES_PER_DAY = 24 * 60;
 
@@ -42,19 +37,6 @@ export function TrajectoryMapShell({
   timelinePoints,
   timelineMax = 0,
 }: TrajectoryMapShellProps) {
-  const [activeLayers, setActiveLayers] = useState<LayerKey[]>([
-    "Trajectories",
-    "Conflicts",
-  ]);
-
-  const toggleLayer = (layer: LayerKey) => {
-    setActiveLayers((prev) =>
-      prev.includes(layer)
-        ? prev.filter((item) => item !== layer)
-        : [...prev, layer],
-    );
-  };
-
   const totalFlights = summary?.flights ?? flights?.length ?? 0;
   const totalSegments = summary?.segments ?? 0;
   const totalSamples = summary?.samples ?? 0;
@@ -91,31 +73,37 @@ export function TrajectoryMapShell({
         <div>
           <h2 className="text-lg font-semibold text-white">Trajectory Map</h2>
           <p className="text-xs text-[var(--color-muted)]">
-            Deck.gl stub; summary reflects latest server analysis.
+            Map visualization pending; backend map data bundle is ready for use.
           </p>
-        </div>
-        <div className="flex flex-wrap gap-2 text-xs">
-          {layers.map((layer) => {
-            const active = activeLayers.includes(layer);
-            return (
-              <button
-                key={layer}
-                type="button"
-                onClick={() => toggleLayer(layer)}
-                className={`rounded-full border px-3 py-1 font-medium transition ${
-                  active
-                    ? "border-[var(--color-azure)] bg-[var(--color-azure-soft)] text-[var(--color-azure)]"
-                    : "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-muted)] hover:border-[var(--color-azure)] hover:text-white"
-                }`}
-              >
-                {layer}
-              </button>
-            );
-          })}
         </div>
       </header>
 
-      <div className="mt-6 flex flex-1 items-center justify-center rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface)] p-6 text-sm text-[var(--color-subtle)]">
+      <div className="mt-6 flex flex-1 flex-col gap-4">
+        <div className="relative flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-6 py-10 text-center text-sm text-[var(--color-subtle)]">
+          {hasData ? (
+            <div className="mx-auto max-w-xl space-y-2">
+              <p className="text-base font-semibold text-white">
+                Interactive map integration in progress
+              </p>
+              <p>
+                Backend now provides map-ready data: normalized trajectory
+                paths, conflict markers, timeline buckets, and a default view
+                state. Frontend teammates can consume
+                AnalyzeConflictsResult.mapData when wiring the final deck.gl or
+                MapLibre layers.
+              </p>
+              <p className="text-[11px] text-[var(--color-muted)]">
+                Temporary placeholder rendered until custom map implementation
+                lands.
+              </p>
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center px-6 text-center text-sm text-[var(--color-subtle)]">
+              Import flights to populate trajectory insights.
+            </div>
+          )}
+        </div>
+
         {hasData ? (
           <div className="flex w-full flex-col gap-4 text-left">
             <div className="flex flex-wrap gap-4 text-xs text-[var(--color-muted)]">
@@ -217,16 +205,8 @@ export function TrajectoryMapShell({
                 </p>
               )}
             </div>
-
-            <p className="text-[11px] text-[var(--color-subtle)]">
-              Interactive WebGL map coming soon. Layer toggles simulate future
-              deck.gl overlays for trajectories, detected conflicts, hotspots,
-              and airspace boundaries.
-            </p>
           </div>
-        ) : (
-          <span>Import flights to populate trajectory layers.</span>
-        )}
+        ) : null}
       </div>
 
       <footer className="mt-6 flex flex-col gap-3">

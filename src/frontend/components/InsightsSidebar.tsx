@@ -44,6 +44,10 @@ export function InsightsSidebar({
   const conflictSampleCount = summary?.conflictSamples ?? 0;
   const resolutionList = resolutionCandidates ?? [];
   const scoringResolutionsPending = Boolean(scoringResolutions);
+  const datasetSummary =
+    flightCount > 0
+      ? `Dataset processed ${segmentCount.toLocaleString("en-US")} segments and ${sampleCount.toLocaleString("en-US")} sampled trajectory points.`
+      : null;
 
   const topDepartureAirports = flightsList.reduce<Record<string, number>>(
     (acc, flight) => {
@@ -120,7 +124,9 @@ export function InsightsSidebar({
             },
             {
               title: "Pipeline status",
-              body: "Conflict hashing in place. Next iteration: surface timeline scrubbing and automated resolution candidate scoring for the most critical pairs.",
+              body: datasetSummary
+                ? `${datasetSummary} Conflict hashing in place. Next iteration: surface timeline scrubbing and automated resolution candidate scoring for the most critical pairs.`
+                : "Conflict hashing in place. Next iteration: surface timeline scrubbing and automated resolution candidate scoring for the most critical pairs.",
             },
           ]
         : [
@@ -146,7 +152,9 @@ export function InsightsSidebar({
             },
             {
               title: "Next up",
-              body: "Bucket sampled trajectories into 1° x 1° cells by minute to spotlight congestion ridgelines across FIRs.",
+              body: datasetSummary
+                ? `${datasetSummary} Next iterate: bucket sampled trajectories into 1° x 1° cells by minute to spotlight congestion ridgelines across FIRs.`
+                : "Bucket sampled trajectories into 1° x 1° cells by minute to spotlight congestion ridgelines across FIRs.",
             },
           ]
         : [
@@ -192,7 +200,9 @@ export function InsightsSidebar({
         ? [
             {
               title: "Quick briefing",
-              body: `Focus on ${formatTopList(topDepartureAirports)} departures and monitor inbound saturation at ${formatTopList(topArrivals)}. Deck.gl overlays will highlight the densest minute buckets.`,
+              body: datasetSummary
+                ? `${datasetSummary} Focus on ${formatTopList(topDepartureAirports)} departures and monitor inbound saturation at ${formatTopList(topArrivals)}. Deck.gl overlays will highlight the densest minute buckets.`
+                : `Focus on ${formatTopList(topDepartureAirports)} departures and monitor inbound saturation at ${formatTopList(topArrivals)}. Deck.gl overlays will highlight the densest minute buckets.`,
             },
             {
               title: "LLM summary (optional)",
