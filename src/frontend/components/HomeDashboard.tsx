@@ -1,15 +1,49 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 import { AnalyzeConflictsResult } from "../../backend/actions/analyzeConflicts";
 import { scoreResolutionsAction } from "../../backend/actions/scoreResolutions";
 import { DashboardLayout } from "./DashboardLayout";
 import { DataDrawer } from "./DataDrawer";
+import { FlightManifest } from "./FlightManifest";
 import { FlightImportPanel } from "./FlightImportPanel";
 import { InsightsSidebar } from "./InsightsSidebar";
 import { ScenarioSummary } from "./ScenarioSummary";
 import { TrajectoryMapShell } from "./TrajectoryMapShell";
 import { ResolutionCandidate } from "../../backend/types/domain";
+import { DashboardView, HypermediaNavLink } from "../types/navigation";
+
+type NavigationState = {
+  hasConflicts: boolean;
+};
+
+const DEFAULT_VIEW: DashboardView = "overview";
+
+const buildNavigationLinks = ({
+  hasConflicts,
+}: NavigationState): HypermediaNavLink[] => {
+  const links: HypermediaNavLink[] = [
+    {
+      rel: "overview",
+      label: "Overview",
+      href: "/",
+    },
+    {
+      rel: "data",
+      label: "Data Intake",
+      href: "/?view=data",
+    },
+    {
+      rel: "mission-control",
+      label: "Mission Control",
+      href: "/?view=mission-control",
+      disabled: !hasConflicts,
+    },
+  ];
+
+  return links;
+};
 
 export function HomeDashboard() {
   const [analysis, setAnalysis] = useState<AnalyzeConflictsResult | null>(null);
@@ -18,7 +52,19 @@ export function HomeDashboard() {
     ResolutionCandidate[]
   >([]);
   const [isScoring, startScoring] = useTransition();
+  const [focusedConflictId, setFocusedConflictId] = useState<string | null>(
+    null,
+  );
+  const [focusedResolutionId, setFocusedResolutionId] = useState<string | null>(
+    null,
+  );
   const scenarioName = "Demo Scenario";
+  const searchParams = useSearchParams();
+  const viewParam = (searchParams.get("view") ?? DEFAULT_VIEW) as DashboardView;
+  const allowedViews: DashboardView[] = ["overview", "data", "mission-control"];
+  const activeView: DashboardView = allowedViews.includes(viewParam)
+    ? viewParam
+    : DEFAULT_VIEW;
 
   const formatTimestamp = (date: Date) =>
     new Intl.DateTimeFormat("en-CA", {
@@ -78,6 +124,49 @@ export function HomeDashboard() {
     };
   }, [analysis?.conflictSamples]);
 
+  const conflictsList = useMemo(
+    () => analysis?.conflicts ?? [],
+    [analysis?.conflicts],
+  );
+
+  const focusedConflict = useMemo(() => {
+    if (!focusedConflictId) {
+      return null;
+    }
+    return (
+      conflictsList.find((conflict) => conflict.id === focusedConflictId) ??
+      null
+    );
+  }, [conflictsList, focusedConflictId]);
+
+  const focusedResolution = useMemo(() => {
+    if (!focusedResolutionId) {
+      return null;
+    }
+    return (
+      resolutionCandidates.find(
+        (candidate) => candidate.id === focusedResolutionId,
+      ) ?? null
+    );
+  }, [resolutionCandidates, focusedResolutionId]);
+
+  const handleConflictFocus = useCallback((conflictId: string | null) => {
+    setFocusedConflictId(conflictId);
+    if (conflictId === null) {
+      setFocusedResolutionId(null);
+    }
+  }, []);
+
+  const handleResolutionFocus = useCallback(
+    (resolutionId: string | null, conflictId: string | null) => {
+      setFocusedResolutionId(resolutionId);
+      if (conflictId) {
+        setFocusedConflictId(conflictId);
+      }
+    },
+    [],
+  );
+
   const leftColumn = (
     <>
       <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-5 shadow-[0_12px_38px_rgba(0,10,26,0.4)]">
@@ -96,11 +185,14 @@ export function HomeDashboard() {
           Import daily flight plans, detect loss-of-separation events, explore
           hotspots, and trial minimal-cost resolutions.
         </p>
+        <FlightImportPanel onAnalysis={handleAnalysis} variant="inline" />
       </section>
 
-      <ScenarioSummary summary={analysis?.summary} />
-
-      <FlightImportPanel onAnalysis={handleAnalysis} />
+      <ScenarioSummary
+        summary={analysis?.summary}
+        conflicts={analysis?.conflicts}
+        resolutionCandidates={resolutionCandidates}
+      />
     </>
   );
 
@@ -109,35 +201,59 @@ export function HomeDashboard() {
       summary={analysis?.summary}
       flights={analysis?.flights}
       conflicts={analysis?.conflicts}
+      mapData={analysis?.mapData}
       timelinePoints={conflictTimeline?.points}
       timelineMax={conflictTimeline?.maxCount ?? 0}
+      focusedConflict={activeView === "overview" ? null : focusedConflict}
+      focusedResolution={activeView === "overview" ? null : focusedResolution}
     />
   );
-  const rightColumn = (
+  const missionControlSnapshot = null;
+
+  const missionControlFull = (
     <InsightsSidebar
       summary={analysis?.summary}
       flights={analysis?.flights}
       conflicts={analysis?.conflicts}
       resolutionCandidates={resolutionCandidates}
+      mapData={analysis?.mapData}
       scoringResolutions={isScoring}
+      onConflictFocus={handleConflictFocus}
+      onResolutionFocus={handleResolutionFocus}
     />
   );
   const bottomDrawer = (
-    <DataDrawer
-      timelinePoints={conflictTimeline?.points}
-      timelineMax={conflictTimeline?.maxCount}
-      totalSamples={conflictTimeline?.totalSamples}
-    />
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <FlightManifest flights={analysis?.flights} />
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
+        <DataDrawer
+          timelinePoints={conflictTimeline?.points}
+          timelineMax={conflictTimeline?.maxCount}
+          totalSamples={conflictTimeline?.totalSamples}
+        />
+      </div>
+    </div>
   );
+
+  const navigationLinks = useMemo(() => {
+    const state: NavigationState = {
+      hasConflicts: Boolean(analysis?.conflicts?.length),
+    };
+
+    return buildNavigationLinks(state);
+  }, [analysis]);
 
   return (
     <DashboardLayout
       leftColumn={leftColumn}
       mapArea={mapArea}
-      rightColumn={rightColumn}
+      rightColumn={missionControlSnapshot}
       bottomDrawer={bottomDrawer}
       scenarioName={scenarioName}
       lastRun={lastRun}
+      navigationLinks={navigationLinks}
+      activeView={activeView}
+      missionControlFull={missionControlFull}
     />
   );
 }

@@ -102,12 +102,17 @@ export type AircraftConstraints = {
 
 export type ResolutionCandidate = {
   id: string;
+  conflictId: string;
+  conflictFlights: [string, string];
   flightId: string;
   deltaTimeSec: number;
   deltaAltitudeFt: number;
   deltaSpeedKt: number;
   cost: number;
   status: "pending" | "valid" | "invalid";
+  estimatedHorizontalGainNm: number;
+  estimatedVerticalGainFt: number;
+  resolvesConflict: boolean;
   notes?: string;
 };
 
