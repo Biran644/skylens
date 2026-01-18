@@ -5,13 +5,12 @@ import {
   AnalysisSummary,
   Conflict,
   Flight,
+  ResolutionCandidate,
   TrajectoryMapData,
 } from "../../backend/types/domain";
 import { TrajectoryDeckMap, type LayerKey } from "./TrajectoryDeckMap";
 
-const layers: LayerKey[] = ["Trajectories", "Conflicts", "Hotspots"];
-
-const MINUTES_PER_DAY = 24 * 60;
+const ALL_LAYERS: LayerKey[] = ["Trajectories", "Conflicts", "Hotspots"];
 
 const formatUtcTime = (tSec: number) => {
   const minutes = Math.floor(tSec / 60)
@@ -38,6 +37,8 @@ type TrajectoryMapShellProps = {
   mapData?: TrajectoryMapData | null;
   timelinePoints?: { minute: number; count: number }[];
   timelineMax?: number;
+  focusedConflict?: Conflict | null;
+  focusedResolution?: ResolutionCandidate | null;
 };
 
 export function TrajectoryMapShell({
@@ -47,12 +48,21 @@ export function TrajectoryMapShell({
   mapData,
   timelinePoints,
   timelineMax = 0,
+  focusedConflict,
+  focusedResolution,
 }: TrajectoryMapShellProps) {
-  const [activeLayers, setActiveLayers] = useState<LayerKey[]>([
-    "Trajectories",
-    "Conflicts",
-  ]);
+  const [activeLayers, setActiveLayers] = useState<LayerKey[]>(ALL_LAYERS);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [containerHeight, setContainerHeight] = useState<number>(480);
+  const [cursorMinute, setCursorMinute] = useState<number | null>(null);
+  const [playbackState, setPlaybackState] = useState<{
+    key: string;
+    playing: boolean;
+  }>({ key: "none", playing: false });
+  const allLayersActive = useMemo(
+    () => ALL_LAYERS.every((layer) => activeLayers.includes(layer)),
+    [activeLayers],
+  );
 
   const toggleLayer = useCallback((layer: LayerKey) => {
     setActiveLayers((prev) =>
@@ -60,6 +70,27 @@ export function TrajectoryMapShell({
         ? prev.filter((item) => item !== layer)
         : [...prev, layer],
     );
+  }, []);
+
+  const activateAllLayers = useCallback(() => {
+    setActiveLayers(ALL_LAYERS);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+
+    const handleResize = () => {
+      const height = Math.max(360, Math.floor(window.innerHeight * 0.55));
+      setContainerHeight(height);
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+    };
   }, []);
 
   useEffect(() => {
@@ -106,25 +137,178 @@ export function TrajectoryMapShell({
   const topConflicts = [...(conflicts ?? [])]
     .sort((a, b) => a.minHorizontalNm - b.minHorizontalNm)
     .slice(0, 5);
-  const timelineBuckets = timelinePoints ?? [];
+  const timelineBuckets = useMemo(() => timelinePoints ?? [], [timelinePoints]);
   const timelineHasData = timelineBuckets.length > 0 && timelineMax > 0;
-  const peakTimeline = timelineHasData
-    ? timelineBuckets.reduce(
-        (peak, point) => (peak && peak.count >= point.count ? peak : point),
-        timelineBuckets[0],
-      )
-    : null;
-  const activeMinute = timelineHasData ? (peakTimeline?.minute ?? null) : null;
-  const highlightCenter = peakTimeline
-    ? (peakTimeline.minute / MINUTES_PER_DAY) * 100
+  const conflictRange = useMemo(() => {
+    if (!focusedConflict) {
+      return null;
+    }
+    return {
+      start: Math.floor(focusedConflict.tStart / 60),
+      end: Math.floor(focusedConflict.tEnd / 60),
+    };
+  }, [focusedConflict]);
+
+  const globalRange = useMemo(() => {
+    if (!timelineHasData) {
+      return null;
+    }
+    const start = timelineBuckets[0].minute;
+    const end = timelineBuckets[timelineBuckets.length - 1].minute;
+    return { start, end };
+  }, [timelineBuckets, timelineHasData]);
+
+  const activeRange = conflictRange ?? globalRange;
+
+  const playbackEnabled = Boolean(activeRange && timelineHasData);
+
+  const rangeKey = activeRange
+    ? `${activeRange.start}-${activeRange.end}`
+    : "none";
+
+  const activeMinute = useMemo(() => {
+    if (!activeRange) {
+      return null;
+    }
+    if (cursorMinute === null) {
+      return activeRange.start;
+    }
+    if (cursorMinute < activeRange.start) {
+      return activeRange.start;
+    }
+    if (cursorMinute > activeRange.end) {
+      return activeRange.end;
+    }
+    return cursorMinute;
+  }, [cursorMinute, activeRange]);
+
+  const isPlaying =
+    playbackEnabled && playbackState.playing && playbackState.key === rangeKey;
+
+  useEffect(() => {
+    if (
+      !isPlaying ||
+      !activeRange ||
+      !timelineHasData ||
+      typeof window === "undefined"
+    ) {
+      return undefined;
+    }
+    const range = activeRange;
+    const interval = window.setInterval(() => {
+      let reachedEnd = false;
+      setCursorMinute((prev) => {
+        if (!range) {
+          return prev;
+        }
+        const baseline =
+          prev === null
+            ? range.start
+            : Math.min(Math.max(prev, range.start), range.end);
+        if (baseline >= range.end) {
+          reachedEnd = true;
+          return range.end;
+        }
+        return baseline + 1;
+      });
+      if (reachedEnd) {
+        setPlaybackState({ key: rangeKey, playing: false });
+      }
+    }, 750);
+    return () => window.clearInterval(interval);
+  }, [isPlaying, activeRange, timelineHasData, rangeKey]);
+
+  const activeBucket = useMemo(() => {
+    if (activeMinute === null) {
+      return null;
+    }
+    return (
+      timelineBuckets.find((bucket) => bucket.minute === activeMinute) ?? null
+    );
+  }, [timelineBuckets, activeMinute]);
+
+  const currentConflictSample = useMemo(() => {
+    if (!focusedConflict || activeMinute === null) {
+      return null;
+    }
+    const startSec = activeMinute * 60;
+    const endSec = startSec + 60;
+    return (
+      focusedConflict.samples.find(
+        (sample) => sample.tSec >= startSec && sample.tSec < endSec,
+      ) ?? null
+    );
+  }, [focusedConflict, activeMinute]);
+
+  const conflictFocus = useMemo(() => {
+    if (!focusedConflict) {
+      return null;
+    }
+    return {
+      conflictId: focusedConflict.id,
+      flights: [focusedConflict.flightA, focusedConflict.flightB] as [
+        string,
+        string,
+      ],
+      window: { start: focusedConflict.tStart, end: focusedConflict.tEnd },
+      location: [
+        focusedConflict.representativeLon,
+        focusedConflict.representativeLat,
+      ] as [number, number],
+    };
+  }, [focusedConflict]);
+
+  const resolutionPreview = useMemo(() => {
+    if (!focusedResolution) {
+      return null;
+    }
+    return {
+      flightId: focusedResolution.flightId,
+      deltaAltitudeFt: focusedResolution.deltaAltitudeFt,
+      deltaSpeedKt: focusedResolution.deltaSpeedKt,
+      deltaTimeSec: focusedResolution.deltaTimeSec,
+      resolvesConflict: focusedResolution.resolvesConflict,
+    };
+  }, [focusedResolution]);
+
+  const timelineSpan = activeRange
+    ? Math.max(activeRange.end - activeRange.start, 0)
     : 0;
-  const highlightWidth = peakTimeline
-    ? Math.max(1.5, (peakTimeline.count / timelineMax) * 8)
+  const highlightWidth = activeRange
+    ? Math.min(12, Math.max(1.5, 100 / (timelineSpan + 1)))
     : 0;
-  const highlightLeft = Math.min(
-    Math.max(0, highlightCenter - highlightWidth / 2),
-    Math.max(0, 100 - highlightWidth),
+  const highlightLeft =
+    activeRange && activeMinute !== null && timelineSpan >= 0
+      ? ((activeMinute - activeRange.start) /
+          Math.max(timelineSpan === 0 ? 1 : timelineSpan, 1)) *
+        (100 - highlightWidth)
+      : 0;
+  const activeMinuteLabel =
+    activeMinute !== null ? formatMinuteLabel(activeMinute) : null;
+  const canRewind = Boolean(
+    activeRange && activeMinute !== null && activeMinute > activeRange.start,
   );
+  const canPlay = playbackEnabled && !isPlaying;
+  const canPause = playbackEnabled && isPlaying;
+
+  const handleRewind = useCallback(() => {
+    if (!activeRange) {
+      return;
+    }
+    setPlaybackState({ key: rangeKey, playing: false });
+    setCursorMinute(activeRange.start);
+  }, [activeRange, rangeKey]);
+
+  const handlePlay = useCallback(() => {
+    if (!activeRange || !timelineHasData) {
+      return;
+    }
+    setPlaybackState({ key: rangeKey, playing: true });
+  }, [activeRange, timelineHasData, rangeKey]);
+
+  const handlePause = useCallback(() => {
+    setPlaybackState({ key: rangeKey, playing: false });
+  }, [rangeKey]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-6 shadow-[0_15px_45px_rgba(0,8,22,0.45)]">
@@ -150,11 +334,23 @@ export function TrajectoryMapShell({
           >
             🔎 Expand view
           </button>
+          <button
+            type="button"
+            onClick={activateAllLayers}
+            disabled={allLayersActive}
+            className={`rounded border px-3 py-1 font-medium transition ${
+              allLayersActive
+                ? "border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-muted)] opacity-70"
+                : "border-[var(--color-azure)] bg-[var(--color-azure-soft)] text-[var(--color-azure)] hover:bg-[rgba(0,159,223,0.2)]"
+            }`}
+          >
+            Activate all layers
+          </button>
         </div>
       </header>
 
       <div className="mt-4 flex flex-wrap gap-2 text-xs">
-        {layers.map((layer) => {
+        {ALL_LAYERS.map((layer) => {
           const active = activeLayers.includes(layer);
           return (
             <button
@@ -175,7 +371,8 @@ export function TrajectoryMapShell({
 
       <div className="mt-6 flex flex-1 flex-col gap-4">
         <div
-          className="relative min-h-[360px] flex-1 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+          className="relative flex-1 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+          style={{ minHeight: `${containerHeight}px` }}
           onDoubleClick={() => hasData && setIsFullscreen(true)}
         >
           {hasData ? (
@@ -185,6 +382,10 @@ export function TrajectoryMapShell({
                 mapData={mapData}
                 activeLayers={activeLayers}
                 activeMinute={activeMinute}
+                enableHoverFocus
+                showAllConflicts
+                focusedConflict={conflictFocus}
+                resolutionPreview={resolutionPreview}
               />
               <div className="pointer-events-none absolute top-3 right-3 rounded bg-[rgba(2,25,48,0.78)] px-3 py-1 text-[11px] text-[var(--color-muted)]">
                 Double-click to expand • Use +/- controls for zoom
@@ -196,6 +397,94 @@ export function TrajectoryMapShell({
             </div>
           )}
         </div>
+
+        {(focusedConflict || focusedResolution) && hasData ? (
+          <div className="rounded-lg border border-[var(--color-border)] bg-[rgba(8,31,58,0.6)] p-4 text-xs text-[var(--color-muted)]">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-white">
+                  Conflict focus
+                </h3>
+                {focusedConflict ? (
+                  <p>
+                    {focusedConflict.flightA} ↔ {focusedConflict.flightB}
+                  </p>
+                ) : (
+                  <p>No conflict selected</p>
+                )}
+              </div>
+              {activeMinuteLabel ? (
+                <div className="rounded border border-[var(--color-border)] px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-[var(--color-subtle)]">
+                  {activeMinuteLabel}
+                </div>
+              ) : null}
+            </div>
+            {focusedConflict ? (
+              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                <div className="rounded border border-[var(--color-border)] bg-[rgba(5,20,38,0.65)] px-3 py-2 text-[11px]">
+                  <p className="text-[var(--color-subtle)]">Window</p>
+                  <p className="text-sm font-semibold text-white">
+                    {formatMinuteLabel(Math.floor(focusedConflict.tStart / 60))}{" "}
+                    → {formatMinuteLabel(Math.floor(focusedConflict.tEnd / 60))}
+                  </p>
+                </div>
+                <div className="rounded border border-[var(--color-border)] bg-[rgba(5,20,38,0.65)] px-3 py-2 text-[11px]">
+                  <p className="text-[var(--color-subtle)]">Closest sample</p>
+                  <p className="text-sm font-semibold text-white">
+                    {focusedConflict.minHorizontalNm.toFixed(2)} nm ·{" "}
+                    {focusedConflict.minVerticalFt.toFixed(0)} ft
+                  </p>
+                </div>
+                {currentConflictSample ? (
+                  <div className="rounded border border-[var(--color-border)] bg-[rgba(5,20,38,0.65)] px-3 py-2 text-[11px]">
+                    <p className="text-[var(--color-subtle)]">Now</p>
+                    <p className="text-sm font-semibold text-white">
+                      {currentConflictSample.horizontalNm.toFixed(2)} nm ·{" "}
+                      {currentConflictSample.verticalFt.toFixed(0)} ft
+                    </p>
+                  </div>
+                ) : (
+                  <div className="rounded border border-[var(--color-border)] bg-[rgba(5,20,38,0.65)] px-3 py-2 text-[11px]">
+                    <p className="text-[var(--color-subtle)]">Now</p>
+                    <p className="text-sm font-semibold text-white">—</p>
+                  </div>
+                )}
+              </div>
+            ) : null}
+            {focusedResolution ? (
+              <div className="mt-3 grid gap-2 text-[11px] text-[var(--color-subtle)] md:grid-cols-2">
+                <div className="rounded border border-[var(--color-border)] bg-[rgba(5,20,38,0.65)] px-3 py-2">
+                  <p className="mb-1 uppercase tracking-[0.2em]">
+                    Resolution candidate
+                  </p>
+                  <p className="text-sm font-semibold text-white">
+                    Flight {focusedResolution.flightId}
+                  </p>
+                  <p>Δ altitude {focusedResolution.deltaAltitudeFt} ft</p>
+                  <p>Δ speed {focusedResolution.deltaSpeedKt} kt</p>
+                  <p>Δ time {focusedResolution.deltaTimeSec}s</p>
+                </div>
+                <div className="rounded border border-[var(--color-border)] bg-[rgba(5,20,38,0.65)] px-3 py-2">
+                  <p className="mb-1 uppercase tracking-[0.2em]">Outcome</p>
+                  <p className="text-sm font-semibold text-white">
+                    {focusedResolution.resolvesConflict
+                      ? "Expected to resolve"
+                      : "Needs adjustments"}
+                  </p>
+                  <p>
+                    Horizontal gain{" "}
+                    {focusedResolution.estimatedHorizontalGainNm.toFixed(2)} nm
+                  </p>
+                  <p>
+                    Vertical gain{" "}
+                    {focusedResolution.estimatedVerticalGainFt.toFixed(0)} ft
+                  </p>
+                  <p>Status {focusedResolution.status}</p>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         {hasData ? (
           <>
@@ -306,28 +595,64 @@ export function TrajectoryMapShell({
         <div className="flex items-center justify-between text-xs text-[var(--color-muted)]">
           <span>Timeline scrubber (UTC)</span>
           <div className="flex items-center gap-2">
-            <button className="rounded border border-[var(--color-border)] px-2 py-1 text-[var(--color-muted)] transition hover:border-[var(--color-azure)] hover:text-white">
-              Rewind
+            <button
+              type="button"
+              onClick={handleRewind}
+              disabled={!canRewind}
+              className={`rounded border px-2 py-1 transition ${
+                canRewind
+                  ? "border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-azure)] hover:text-white"
+                  : "border-[var(--color-border)] text-[var(--color-subtle)] opacity-60"
+              }`}
+            >
+              ⟲ Rewind
             </button>
-            <button className="rounded border border-[var(--color-border)] px-2 py-1 text-[var(--color-muted)] transition hover:border-[var(--color-azure)] hover:text-white">
-              Play
+            <button
+              type="button"
+              onClick={handlePlay}
+              disabled={!canPlay}
+              className={`rounded border px-2 py-1 transition ${
+                canPlay
+                  ? "border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-azure)] hover:text-white"
+                  : "border-[var(--color-border)] text-[var(--color-subtle)] opacity-60"
+              }`}
+            >
+              ▶ Play
             </button>
-            <button className="rounded border border-[var(--color-border)] px-2 py-1 text-[var(--color-muted)] transition hover:border-[var(--color-azure)] hover:text-white">
-              Pause
+            <button
+              type="button"
+              onClick={handlePause}
+              disabled={!canPause}
+              className={`rounded border px-2 py-1 transition ${
+                canPause
+                  ? "border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-azure)] hover:text-white"
+                  : "border-[var(--color-border)] text-[var(--color-subtle)] opacity-60"
+              }`}
+            >
+              ⏸ Pause
             </button>
           </div>
         </div>
-        {timelineHasData && peakTimeline ? (
+        {timelineHasData && activeRange ? (
           <div className="flex items-center justify-between text-[11px] text-[var(--color-subtle)]">
-            <span>Peak {formatMinuteLabel(peakTimeline.minute)}</span>
-            <span>{peakTimeline.count.toLocaleString("en-US")} samples</span>
+            <span>
+              Range {formatMinuteLabel(activeRange.start)} →{" "}
+              {formatMinuteLabel(activeRange.end)}
+            </span>
+            <span>
+              {activeBucket?.count?.toLocaleString("en-US") ?? "0"} samples at{" "}
+              {activeMinuteLabel ?? "—"}
+            </span>
           </div>
         ) : null}
         <div className="relative h-2 rounded-full bg-[var(--color-surface)]">
-          {timelineHasData && peakTimeline ? (
+          {timelineHasData && activeRange && activeMinute !== null ? (
             <div
               className="absolute top-0 h-2 rounded-full bg-[var(--color-azure)] transition-[left,width]"
-              style={{ left: `${highlightLeft}%`, width: `${highlightWidth}%` }}
+              style={{
+                left: `${Math.max(0, Math.min(100 - highlightWidth, highlightLeft))}%`,
+                width: `${highlightWidth}%`,
+              }}
             />
           ) : (
             <div className="absolute top-0 h-2 w-1/4 rounded-full bg-[var(--color-azure)] opacity-30" />
@@ -362,6 +687,10 @@ export function TrajectoryMapShell({
                   mapData={mapData}
                   activeLayers={activeLayers}
                   activeMinute={activeMinute}
+                  enableHoverFocus
+                  showAllConflicts
+                  focusedConflict={conflictFocus}
+                  resolutionPreview={resolutionPreview}
                 />
               </div>
             </div>

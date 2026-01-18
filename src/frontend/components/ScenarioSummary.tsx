@@ -1,9 +1,15 @@
 "use client";
 
-import { AnalysisSummary } from "../../backend/types/domain";
+import {
+  AnalysisSummary,
+  Conflict,
+  ResolutionCandidate,
+} from "../../backend/types/domain";
 
 type ScenarioSummaryProps = {
   summary?: AnalysisSummary | null;
+  conflicts?: Conflict[] | null;
+  resolutionCandidates?: ResolutionCandidate[] | null;
 };
 
 const formatNumber = (value: number) =>
@@ -11,14 +17,32 @@ const formatNumber = (value: number) =>
     ? value.toLocaleString("en-US", { maximumFractionDigits: 1 })
     : "—";
 
-export function ScenarioSummary({ summary }: ScenarioSummaryProps) {
+export function ScenarioSummary({
+  summary,
+  conflicts,
+  resolutionCandidates,
+}: ScenarioSummaryProps) {
   const flights = summary?.flights ?? 0;
   const segments = summary?.segments ?? 0;
   const samples = summary?.samples ?? 0;
   const avgSegments = summary?.averageSegmentsPerFlight ?? 0;
   const avgSamples = summary?.averageSamplesPerFlight ?? 0;
-  const conflicts = summary?.conflicts ?? 0;
+  const conflictsDetected = summary?.conflicts ?? 0;
   const conflictSamples = summary?.conflictSamples ?? 0;
+  const totalConflicts = summary?.conflicts ?? conflicts?.length ?? 0;
+  const resolvedConflictIds = new Set(
+    (resolutionCandidates ?? [])
+      .filter(
+        (candidate) =>
+          candidate.resolvesConflict && candidate.status !== "invalid",
+      )
+      .map((candidate) => candidate.conflictId),
+  );
+  const autoResolvedCount = resolvedConflictIds.size;
+  const outstandingCount = Math.max(totalConflicts - autoResolvedCount, 0);
+  const hasKpis = Boolean(
+    summary || conflicts?.length || resolutionCandidates?.length,
+  );
 
   return (
     <section className="rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-5 shadow-[0_12px_40px_rgba(0,10,25,0.35)]">
@@ -54,7 +78,7 @@ export function ScenarioSummary({ summary }: ScenarioSummaryProps) {
             Conflicts detected
           </p>
           <p className="mt-2 text-2xl font-semibold text-[#ffcf6a]">
-            {summary ? conflicts.toLocaleString("en-US") : "—"}
+            {summary ? conflictsDetected.toLocaleString("en-US") : "—"}
           </p>
           <p className="mt-1 text-[11px] text-[var(--color-muted)]">
             Loss-of-separation pairs
@@ -65,7 +89,9 @@ export function ScenarioSummary({ summary }: ScenarioSummaryProps) {
           <p className="text-xs uppercase tracking-wide text-[var(--color-subtle)]">
             Auto-resolved
           </p>
-          <p className="mt-2 text-2xl font-semibold text-[#5be7a9]">—</p>
+          <p className="mt-2 text-2xl font-semibold text-[#5be7a9]">
+            {hasKpis ? autoResolvedCount.toLocaleString("en-US") : "—"}
+          </p>
           <p className="mt-1 text-[11px] text-[var(--color-muted)]">
             No new conflicts introduced
           </p>
@@ -75,7 +101,9 @@ export function ScenarioSummary({ summary }: ScenarioSummaryProps) {
           <p className="text-xs uppercase tracking-wide text-[var(--color-subtle)]">
             Outstanding
           </p>
-          <p className="mt-2 text-2xl font-semibold text-[#ff8ba7]">—</p>
+          <p className="mt-2 text-2xl font-semibold text-[#ff8ba7]">
+            {hasKpis ? outstandingCount.toLocaleString("en-US") : "—"}
+          </p>
           <p className="mt-1 text-[11px] text-[var(--color-muted)]">
             Needs planner review
           </p>

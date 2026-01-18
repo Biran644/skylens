@@ -8,6 +8,7 @@ import {
   AnalysisSummary,
   Conflict,
   ConflictSample,
+  DEFAULT_FINE_STEP_SEC,
   Flight,
   RawFlight,
   TrajectoryMapData,
@@ -47,7 +48,7 @@ export async function analyzeConflictsAction(
     (acc, flight) => acc + flight.segments.length,
     0,
   );
-  const samples = sampleFlights(flights);
+  const samples = sampleFlights(flights, DEFAULT_FINE_STEP_SEC);
   const conflictSamples = detectConflictSamples(samples);
   const conflicts = buildConflicts(conflictSamples);
   const mapData = buildTrajectoryMapData(flights, conflicts, conflictSamples);

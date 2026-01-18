@@ -1,26 +1,34 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AnalysisSummary,
   Conflict,
   Flight,
   ResolutionCandidate,
+  TrajectoryMapData,
 } from "../../backend/types/domain";
+import { TrajectoryDeckMap, type LayerKey } from "./TrajectoryDeckMap";
 
 type InsightsSidebarProps = {
   summary?: AnalysisSummary | null;
   flights?: Flight[] | null;
   conflicts?: Conflict[] | null;
   resolutionCandidates?: ResolutionCandidate[] | null;
+  mapData?: TrajectoryMapData | null;
   scoringResolutions?: boolean;
+  onConflictFocus?: (conflictId: string | null) => void;
+  onResolutionFocus?: (
+    resolutionId: string | null,
+    conflictId: string | null,
+  ) => void;
 };
 
 type TabKey = "Conflicts" | "Solutions";
 
 const tabs: TabKey[] = ["Conflicts", "Solutions"];
 
-const CONFLICTS_PER_PAGE = 5;
+const CONFLICTS_PER_PAGE = 10;
 const RESOLUTIONS_PER_PAGE = 5;
 
 const formatZuluTime = (seconds: number) =>
@@ -61,7 +69,10 @@ export function InsightsSidebar({
   summary,
   conflicts,
   resolutionCandidates,
+  mapData,
   scoringResolutions,
+  onConflictFocus,
+  onResolutionFocus,
 }: InsightsSidebarProps) {
   const [activeTab, setActiveTab] = useState<TabKey>("Conflicts");
   const [selectedConflictId, setSelectedConflictId] = useState<string | null>(
@@ -72,6 +83,13 @@ export function InsightsSidebar({
   >(null);
   const [conflictPage, setConflictPage] = useState(0);
   const [resolutionPage, setResolutionPage] = useState(0);
+  const [explanation, setExplanation] = useState<string | null>(null);
+  const [explanationStatus, setExplanationStatus] = useState<
+    "idle" | "loading" | "error"
+  >("idle");
+  const [explanationRequestKey, setExplanationRequestKey] = useState<
+    string | null
+  >(null);
 
   const conflictList = useMemo(() => conflicts ?? [], [conflicts]);
   const orderedConflicts = useMemo(
@@ -139,9 +157,6 @@ export function InsightsSidebar({
     );
     const bounded = Math.min(Math.max(page, 0), maxPage);
     setConflictPage(bounded);
-    const start = bounded * CONFLICTS_PER_PAGE;
-    const fallback = orderedConflicts[start];
-    setSelectedConflictId(fallback ? fallback.id : null);
   };
 
   const goToResolutionPage = (page: number) => {
@@ -163,6 +178,11 @@ export function InsightsSidebar({
       setConflictPage(targetPage);
     }
     setSelectedConflictId(conflict.id);
+    setExplanation(null);
+    setExplanationStatus("loading");
+    setExplanationRequestKey(
+      `${conflict.id}:${selectedResolutionId ?? "none"}`,
+    );
   };
 
   const handleResolutionSelect = (candidate: ResolutionCandidate) => {
@@ -174,23 +194,24 @@ export function InsightsSidebar({
       setResolutionPage(targetPage);
     }
     setSelectedResolutionId(candidate.id);
+    if (selectedConflictId) {
+      setExplanation(null);
+      setExplanationStatus("loading");
+      setExplanationRequestKey(
+        `${selectedConflictId}:${candidate.id ?? "none"}`,
+      );
+    }
   };
 
   const conflictId = useMemo(() => {
-    if (!orderedConflicts.length) {
-      return null;
-    }
     if (
       selectedConflictId &&
       orderedConflicts.some((conflict) => conflict.id === selectedConflictId)
     ) {
       return selectedConflictId;
     }
-    if (pagedConflicts.length > 0) {
-      return pagedConflicts[0].id;
-    }
-    return orderedConflicts[0].id;
-  }, [orderedConflicts, pagedConflicts, selectedConflictId]);
+    return null;
+  }, [orderedConflicts, selectedConflictId]);
 
   const selectedConflict = useMemo(() => {
     if (!conflictId) {
@@ -212,9 +233,6 @@ export function InsightsSidebar({
   );
 
   const resolutionId = useMemo(() => {
-    if (!orderedResolutions.length) {
-      return null;
-    }
     if (
       selectedResolutionId &&
       orderedResolutions.some(
@@ -223,16 +241,21 @@ export function InsightsSidebar({
     ) {
       return selectedResolutionId;
     }
-    if (activeTab === "Conflicts" && conflictSpecificResolutions.length > 0) {
+    if (
+      activeTab === "Conflicts" &&
+      conflictId &&
+      conflictSpecificResolutions.length > 0
+    ) {
       return conflictSpecificResolutions[0].id;
     }
-    if (pagedResolutions.length > 0) {
+    if (activeTab === "Solutions" && pagedResolutions.length > 0) {
       return pagedResolutions[0].id;
     }
-    return orderedResolutions[0].id;
+    return null;
   }, [
     activeTab,
     conflictSpecificResolutions,
+    conflictId,
     orderedResolutions,
     pagedResolutions,
     selectedResolutionId,
@@ -247,6 +270,100 @@ export function InsightsSidebar({
       null
     );
   }, [orderedResolutions, resolutionId]);
+
+  useEffect(() => {
+    if (!selectedConflict || !explanationRequestKey) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    fetch("/api/gemini", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        conflict: selectedConflict,
+        resolution: selectedResolution,
+      }),
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          let errorDetails = "Gemini request failed";
+          try {
+            const data = (await res.json()) as {
+              error?: string;
+              details?: string;
+            };
+            errorDetails = data.details || data.error || errorDetails;
+          } catch {
+            // ignore parsing errors
+          }
+          throw new Error(errorDetails);
+        }
+        const data = (await res.json()) as { text?: string };
+        setExplanation(data.text?.trim() ?? "");
+        setExplanationStatus("idle");
+      })
+      .catch((error) => {
+        if (error.name === "AbortError") {
+          return;
+        }
+        setExplanation(error?.message ?? null);
+        setExplanationStatus("error");
+      });
+
+    return () => controller.abort();
+  }, [explanationRequestKey, selectedConflict, selectedResolution]);
+
+  const missionMapLayers = useMemo<LayerKey[]>(
+    () => ["Trajectories", "Conflicts"],
+    [],
+  );
+
+  const conflictFocus = useMemo(() => {
+    if (!selectedConflict) {
+      return null;
+    }
+    return {
+      conflictId: selectedConflict.id,
+      flights: [selectedConflict.flightA, selectedConflict.flightB] as [
+        string,
+        string,
+      ],
+      window: { start: selectedConflict.tStart, end: selectedConflict.tEnd },
+      location: [
+        selectedConflict.representativeLon,
+        selectedConflict.representativeLat,
+      ] as [number, number],
+    };
+  }, [selectedConflict]);
+
+  const resolutionPreview = useMemo(() => {
+    if (!selectedResolution) {
+      return null;
+    }
+    return {
+      flightId: selectedResolution.flightId,
+      deltaAltitudeFt: selectedResolution.deltaAltitudeFt,
+      deltaSpeedKt: selectedResolution.deltaSpeedKt,
+      deltaTimeSec: selectedResolution.deltaTimeSec,
+      resolvesConflict: selectedResolution.resolvesConflict,
+    };
+  }, [selectedResolution]);
+
+  useEffect(() => {
+    if (onConflictFocus) {
+      onConflictFocus(conflictId ?? null);
+    }
+  }, [conflictId, onConflictFocus]);
+
+  useEffect(() => {
+    if (onResolutionFocus) {
+      const conflictRef = selectedResolution?.conflictId ?? null;
+      onResolutionFocus(resolutionId ?? null, conflictRef);
+    }
+  }, [onResolutionFocus, resolutionId, selectedResolution?.conflictId]);
 
   const resolvedConflictIds = useMemo(() => {
     const resolved = new Set<string>();
@@ -340,7 +457,7 @@ export function InsightsSidebar({
         {activeTab === "Conflicts" ? (
           conflictList.length > 0 ? (
             <div className="flex h-full flex-col gap-4">
-              <div className="grid flex-1 gap-4 md:grid-cols-2">
+              <div className="grid flex-1 gap-4 md:grid-cols-[minmax(220px,0.7fr)_minmax(0,1.3fr)]">
                 <article className="flex min-h-0 flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
                   <header className="border-b border-[var(--color-border-soft)] px-4 py-3">
                     <h3 className="text-sm font-semibold text-white">
@@ -436,6 +553,27 @@ export function InsightsSidebar({
                   </header>
                   {selectedConflict ? (
                     <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 py-4">
+                      <div className="overflow-hidden rounded-md border border-[var(--color-border)] bg-[rgba(7,23,43,0.6)]">
+                        <div className="border-b border-[var(--color-border-soft)] px-3 py-2 text-[11px] uppercase tracking-[0.2em] text-[var(--color-subtle)]">
+                          Mission control map
+                        </div>
+                        <div className="h-[220px]">
+                          {mapData ? (
+                            <TrajectoryDeckMap
+                              mapData={mapData}
+                              activeLayers={missionMapLayers}
+                              activeMinute={null}
+                              showOnlyFocused
+                              focusedConflict={conflictFocus}
+                              resolutionPreview={resolutionPreview}
+                            />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-xs text-[var(--color-subtle)]">
+                              Map data not available yet.
+                            </div>
+                          )}
+                        </div>
+                      </div>
                       <div className="rounded-md bg-[rgba(8,31,58,0.6)] p-3">
                         <p className="text-xs text-[var(--color-subtle)]">
                           Window {formatZuluTime(selectedConflict.tStart)}Z →{" "}
@@ -504,6 +642,29 @@ export function InsightsSidebar({
                           <p className="mt-3 text-xs text-[var(--color-subtle)]">
                             No mitigation generated yet; queue scoring to
                             evaluate adjustments.
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="rounded-md border border-[var(--color-border)] bg-[rgba(7,23,43,0.6)] px-3 py-3 text-xs">
+                        <p className="text-[10px] uppercase tracking-[0.2em] text-[var(--color-muted)]">
+                          Gemini explanation
+                        </p>
+                        {explanationStatus === "loading" ? (
+                          <p className="mt-2 text-[var(--color-subtle)]">
+                            Génération de l’explication…
+                          </p>
+                        ) : explanationStatus === "error" ? (
+                          <p className="mt-2 text-[var(--color-subtle)]">
+                            Impossible de charger l’explication.
+                          </p>
+                        ) : explanation ? (
+                          <p className="mt-2 whitespace-pre-wrap text-[var(--color-subtle)]">
+                            {explanation}
+                          </p>
+                        ) : (
+                          <p className="mt-2 text-[var(--color-subtle)]">
+                            Aucune explication disponible.
                           </p>
                         )}
                       </div>
