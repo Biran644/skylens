@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AnalysisSummary,
   Conflict,
@@ -65,6 +65,27 @@ const describeAdjustment = (candidate: ResolutionCandidate) => {
   return adjustments.length > 0 ? adjustments.join(" / ") : "No change";
 };
 
+const buildFallbackExplanation = (
+  conflict: Conflict,
+  resolution?: ResolutionCandidate | null,
+) => {
+  const base = `Conflict between ${conflict.flightA} and ${conflict.flightB}. Min separation ${conflict.minHorizontalNm.toFixed(2)} nm / ${conflict.minVerticalFt.toFixed(0)} ft.`;
+  if (!resolution) {
+    return `${base} No resolution candidate selected.`;
+  }
+  const adjustments = describeAdjustment(resolution);
+  return `${base} Candidate for ${resolution.flightId}: ${adjustments}.`;
+};
+
+const buildFallbackSolution = (resolution?: ResolutionCandidate | null) => {
+  if (!resolution) {
+    return null;
+  }
+  const adjustments = describeAdjustment(resolution);
+  return `Adjust ${resolution.flightId}: ${adjustments}.`;
+};
+
+
 export function InsightsSidebar({
   summary,
   conflicts,
@@ -84,12 +105,22 @@ export function InsightsSidebar({
   const [conflictPage, setConflictPage] = useState(0);
   const [resolutionPage, setResolutionPage] = useState(0);
   const [explanation, setExplanation] = useState<string | null>(null);
+  const [solutionSummary, setSolutionSummary] = useState<string | null>(null);
   const [explanationStatus, setExplanationStatus] = useState<
     "idle" | "loading" | "error"
   >("idle");
+  const [explanationSource, setExplanationSource] = useState<
+    "gemini" | "fallback" | null
+  >(null);
+  const [explanationError, setExplanationError] = useState<string | null>(null);
   const [explanationRequestKey, setExplanationRequestKey] = useState<
     string | null
   >(null);
+  const [retryCount, setRetryCount] = useState(0);
+  const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
+  const explanationCacheRef = useRef<
+    Map<string, { explanation: string; solution?: string | null }>
+  >(new Map());
 
   const conflictList = useMemo(() => conflicts ?? [], [conflicts]);
   const orderedConflicts = useMemo(
@@ -179,7 +210,10 @@ export function InsightsSidebar({
     }
     setSelectedConflictId(conflict.id);
     setExplanation(null);
+    setSolutionSummary(null);
     setExplanationStatus("loading");
+    setExplanationSource(null);
+    setExplanationError(null);
     setExplanationRequestKey(
       `${conflict.id}:${selectedResolutionId ?? "none"}`,
     );
@@ -196,7 +230,10 @@ export function InsightsSidebar({
     setSelectedResolutionId(candidate.id);
     if (selectedConflictId) {
       setExplanation(null);
+      setSolutionSummary(null);
       setExplanationStatus("loading");
+      setExplanationSource(null);
+      setExplanationError(null);
       setExplanationRequestKey(
         `${selectedConflictId}:${candidate.id ?? "none"}`,
       );
@@ -276,6 +313,19 @@ export function InsightsSidebar({
       return;
     }
 
+    if (cooldownUntil && Date.now() < cooldownUntil) {
+      return;
+    }
+
+    const cached = explanationCacheRef.current.get(explanationRequestKey);
+    if (cached) {
+      setExplanation(cached.explanation);
+      setSolutionSummary(cached.solution ?? null);
+      setExplanationStatus("idle");
+      setExplanationSource("gemini");
+      return;
+    }
+
     const controller = new AbortController();
 
     fetch("/api/gemini", {
@@ -299,22 +349,50 @@ export function InsightsSidebar({
           } catch {
             // ignore parsing errors
           }
+          if (res.status === 429) {
+            setCooldownUntil(Date.now() + 60_000);
+            errorDetails = "Rate limited. Try again in a minute.";
+          }
           throw new Error(errorDetails);
         }
-        const data = (await res.json()) as { text?: string };
-        setExplanation(data.text?.trim() ?? "");
+        const data = (await res.json()) as {
+          text?: string;
+          explanation?: string;
+          solution?: string;
+        };
+        const text = data.explanation?.trim() ?? data.text?.trim() ?? "";
+        const solution = data.solution?.trim() ?? null;
+        explanationCacheRef.current.set(explanationRequestKey, {
+          explanation: text,
+          solution,
+        });
+        setExplanation(text);
+        setSolutionSummary(solution);
         setExplanationStatus("idle");
+        setExplanationSource("gemini");
+        setExplanationError(null);
       })
       .catch((error) => {
         if (error.name === "AbortError") {
           return;
         }
+        if (selectedConflict) {
+          setExplanation(
+            buildFallbackExplanation(selectedConflict, selectedResolution),
+          );
+          setSolutionSummary(buildFallbackSolution(selectedResolution));
+          setExplanationStatus("idle");
+          setExplanationSource("fallback");
+          setExplanationError(error?.message ?? "Gemini request failed");
+          return;
+        }
         setExplanation(error?.message ?? null);
+        setSolutionSummary(null);
         setExplanationStatus("error");
       });
 
     return () => controller.abort();
-  }, [explanationRequestKey, selectedConflict, selectedResolution]);
+  }, [explanationRequestKey, selectedConflict, selectedResolution, retryCount]);
 
   const missionMapLayers = useMemo<LayerKey[]>(
     () => ["Trajectories", "Conflicts"],
@@ -647,16 +725,43 @@ export function InsightsSidebar({
                       </div>
 
                       <div className="rounded-md border border-[var(--color-border)] bg-[rgba(7,23,43,0.6)] px-3 py-3 text-xs">
-                        <p className="text-[10px] uppercase tracking-[0.2em] text-[var(--color-muted)]">
-                          Gemini explanation
-                        </p>
+                        <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.2em] text-[var(--color-muted)]">
+                          <span>Gemini explanation</span>
+                          <div className="flex items-center gap-2">
+                            <span className="rounded-full border border-[rgba(255,255,255,0.12)] px-2 py-0.5 text-[9px]">
+                              {explanationSource === "fallback"
+                                ? "Fallback"
+                                : explanationSource === "gemini"
+                                  ? "Gemini"
+                                  : "—"}
+                            </span>
+                            {explanationSource === "fallback" &&
+                            explanationError ? (
+                              <span className="text-[9px] uppercase tracking-[0.15em] text-[var(--color-warning)]">
+                                Gemini error
+                              </span>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setRetryCount((count) => count + 1)
+                              }
+                              disabled={Boolean(
+                                cooldownUntil && Date.now() < cooldownUntil,
+                              )}
+                              className="rounded border border-[rgba(255,255,255,0.12)] px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] text-[var(--color-subtle)] transition hover:border-[var(--color-azure)] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              Retry
+                            </button>
+                          </div>
+                        </div>
                         {explanationStatus === "loading" ? (
                           <p className="mt-2 text-[var(--color-subtle)]">
-                            Génération de l’explication…
+                            Loading explanation…
                           </p>
                         ) : explanationStatus === "error" ? (
                           <p className="mt-2 text-[var(--color-subtle)]">
-                            Impossible de charger l’explication.
+                            Gemini error.
                           </p>
                         ) : explanation ? (
                           <p className="mt-2 whitespace-pre-wrap text-[var(--color-subtle)]">
@@ -664,9 +769,25 @@ export function InsightsSidebar({
                           </p>
                         ) : (
                           <p className="mt-2 text-[var(--color-subtle)]">
-                            Aucune explication disponible.
+                            {cooldownUntil && Date.now() < cooldownUntil
+                              ? "Rate limited. Try again shortly."
+                              : "No explanation available."}
                           </p>
                         )}
+                        {selectedResolution ? (
+                          <p className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-[var(--color-muted)]">
+                            <span>
+                              Solution:{" "}
+                              {solutionSummary ??
+                                buildFallbackSolution(selectedResolution)}
+                            </span>
+                            <span className="rounded-full border border-[rgba(255,255,255,0.12)] px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] text-[var(--color-muted)]">
+                              {solutionSummary && explanationSource === "gemini"
+                                ? "Gemini"
+                                : "Fallback"}
+                            </span>
+                          </p>
+                        ) : null}
                       </div>
                     </div>
                   ) : (

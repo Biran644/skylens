@@ -7,7 +7,7 @@ import { DashboardView, HypermediaNavLink } from "../types/navigation";
 type DashboardLayoutProps = {
   leftColumn: ReactNode;
   mapArea: ReactNode;
-  rightColumn: ReactNode;
+  rightColumn?: ReactNode;
   bottomDrawer?: ReactNode;
   scenarioName: string;
   lastRun: string;
@@ -38,30 +38,10 @@ export function DashboardLayout({
       );
     }
 
-    if (activeView === "map") {
-      return (
-        <div className="flex flex-1 min-h-0 flex-col gap-4 overflow-hidden">
-          {mapArea}
-        </div>
-      );
-    }
-
     if (activeView === "mission-control") {
       return (
         <div className="flex flex-1 min-h-0 flex-col gap-4 overflow-auto pl-1">
           {missionControlFull}
-        </div>
-      );
-    }
-
-    if (activeView === "timeline") {
-      return bottomDrawer ? (
-        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-4 shadow-[0_12px_38px_rgba(0,10,26,0.4)]">
-          {bottomDrawer}
-        </div>
-      ) : (
-        <div className="flex flex-1 items-center justify-center rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-8 text-sm text-[var(--color-subtle)]">
-          Timeline data becomes available after running an analysis.
         </div>
       );
     }
@@ -81,16 +61,24 @@ export function DashboardLayout({
       <div className="flex flex-1 flex-col overflow-hidden px-6 pb-6 pt-4 xl:px-10">
         {isOverview ? (
           <>
-            <div className="grid flex-1 gap-4 overflow-hidden xl:grid-cols-[320px_minmax(0,1fr)_360px]">
+            <div
+              className={`grid flex-1 gap-4 overflow-hidden ${
+                rightColumn
+                  ? "xl:grid-cols-[320px_minmax(0,1fr)_360px]"
+                  : "xl:grid-cols-[320px_minmax(0,1fr)]"
+              }`}
+            >
               <div className="flex min-h-0 flex-col gap-4 overflow-auto pr-1">
                 {leftColumn}
               </div>
               <div className="flex min-h-0 flex-col gap-4 overflow-hidden">
                 {mapArea}
               </div>
-              <div className="flex min-h-0 flex-col gap-4 overflow-auto pl-1">
-                {rightColumn}
-              </div>
+              {rightColumn ? (
+                <div className="flex min-h-0 flex-col gap-4 overflow-auto pl-1">
+                  {rightColumn}
+                </div>
+              ) : null}
             </div>
 
             {bottomDrawer ? (

@@ -37,9 +37,11 @@ export function DataDrawer({
     <section className="flex flex-col gap-4">
       <header className="flex items-center justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-white">Data & Timeline</h3>
+          <h3 className="text-sm font-semibold text-white">
+            Conflict timeline
+          </h3>
           <p className="text-xs text-[var(--color-muted)]">
-            Inspect raw plan data and conflict cadence.
+            Inspect conflict cadence across the day.
           </p>
         </div>
         <button
@@ -52,69 +54,55 @@ export function DataDrawer({
       </header>
 
       {open ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-muted)]">
-            <h4 className="text-sm font-semibold text-white">
-              Flight manifest
-            </h4>
-            <p className="mt-2 text-xs text-[var(--color-subtle)]">
-              Paginated table of imported flights with filters for airline,
-              altitude, time window. Populate after ingest.
-            </p>
-          </div>
-          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-muted)]">
-            <h4 className="text-sm font-semibold text-white">
-              Conflict timeline
-            </h4>
-            {hasTimeline ? (
-              <div className="mt-3 flex flex-col gap-3">
-                <div className="flex items-baseline justify-between text-xs text-[var(--color-subtle)]">
-                  <span>
-                    {totalSamples.toLocaleString("en-US")} total samples
-                  </span>
-                  <span>
-                    Peak minute: {formatMinuteLabel(topBuckets[0].minute)} ·{" "}
-                    {topBuckets[0].count.toLocaleString("en-US")} samples
-                  </span>
-                </div>
-                <ul className="flex flex-col gap-2">
-                  {topBuckets.map((bucket) => {
-                    const percentage =
-                      timelineMax > 0 ? (bucket.count / timelineMax) * 100 : 0;
-                    return (
-                      <li
-                        key={`timeline-${bucket.minute}`}
-                        className="flex flex-col gap-1 rounded border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2"
-                      >
-                        <div className="flex items-center justify-between text-[11px] text-[var(--color-subtle)]">
-                          <span className="font-semibold text-white">
-                            {formatMinuteLabel(bucket.minute)}
-                          </span>
-                          <span>{bucket.count.toLocaleString("en-US")}</span>
-                        </div>
-                        <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.05)]">
-                          <div
-                            className="h-1.5 rounded-full bg-[var(--color-azure)]"
-                            style={{ width: `${Math.max(6, percentage)}%` }}
-                          />
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-                <p className="text-[11px] text-[var(--color-subtle)]">
-                  Timeline aggregates conflict samples into 1-minute buckets.
-                  Use the scrubber to align mitigation windows with the busiest
-                  periods.
-                </p>
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm text-[var(--color-muted)]">
+          {hasTimeline ? (
+            <div className="mt-1 flex flex-col gap-3">
+              <div className="flex items-baseline justify-between text-xs text-[var(--color-subtle)]">
+                <span>
+                  {totalSamples.toLocaleString("en-US")} total samples
+                </span>
+                <span>
+                  Peak minute: {formatMinuteLabel(topBuckets[0].minute)} ·{" "}
+                  {topBuckets[0].count.toLocaleString("en-US")} samples
+                </span>
               </div>
-            ) : (
-              <p className="mt-2 text-xs text-[var(--color-subtle)]">
-                Stacked bars showing conflicts per minute bucket; highlights
-                hotspots and resolution effects. Import data to populate.
+              <ul className="flex flex-col gap-2">
+                {topBuckets.map((bucket) => {
+                  const percentage =
+                    timelineMax > 0 ? (bucket.count / timelineMax) * 100 : 0;
+                  return (
+                    <li
+                      key={`timeline-${bucket.minute}`}
+                      className="flex flex-col gap-1 rounded border border-[var(--color-border)] bg-[var(--color-panel)] px-3 py-2"
+                    >
+                      <div className="flex items-center justify-between text-[11px] text-[var(--color-subtle)]">
+                        <span className="font-semibold text-white">
+                          {formatMinuteLabel(bucket.minute)}
+                        </span>
+                        <span>{bucket.count.toLocaleString("en-US")}</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-[rgba(255,255,255,0.05)]">
+                        <div
+                          className="h-1.5 rounded-full bg-[var(--color-azure)]"
+                          style={{ width: `${Math.max(6, percentage)}%` }}
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="text-[11px] text-[var(--color-subtle)]">
+                Timeline aggregates conflict samples into 1-minute buckets. Use
+                the scrubber to align mitigation windows with the busiest
+                periods.
               </p>
-            )}
-          </div>
+            </div>
+          ) : (
+            <p className="text-xs text-[var(--color-subtle)]">
+              Stacked bars show conflicts per minute bucket; import data to
+              populate.
+            </p>
+          )}
         </div>
       ) : null}
     </section>

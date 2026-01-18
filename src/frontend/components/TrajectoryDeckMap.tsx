@@ -3,10 +3,8 @@
 import type { MapViewState } from "@deck.gl/core";
 import { PathLayer, ScatterplotLayer, TextLayer } from "@deck.gl/layers";
 import DeckGL from "@deck.gl/react";
-import { luma } from "@luma.gl/core";
-import { webgl2Adapter } from "@luma.gl/webgl";
-import { useEffect, useMemo, useState } from "react";
-import { Map as MapLibreMap } from "react-map-gl/maplibre";
+import { Component, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Map as MapLibreMap, type MapRef } from "react-map-gl/maplibre";
 import "maplibre-gl/dist/maplibre-gl.css";
 import {
   TrajectoryMapConflictPoint,
@@ -38,21 +36,13 @@ type TrajectoryDeckMapProps = {
   } | null;
 };
 
-let webglConfigured = false;
-
-const ensureWebGL = () => {
-  if (webglConfigured || typeof window === "undefined") {
-    return;
+const canUseWebGL = () => {
+  if (typeof window === "undefined") {
+    return false;
   }
-
-  luma.registerAdapters([webgl2Adapter]);
-  luma.setDefaultDeviceProps({ type: "webgl", adapters: [webgl2Adapter] });
-  webglConfigured = true;
+  const canvas = document.createElement("canvas");
+  return Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl"));
 };
-
-if (typeof window !== "undefined") {
-  ensureWebGL();
-}
 
 const BASEMAP_STYLE =
   "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json";
@@ -60,7 +50,7 @@ const BASEMAP_STYLE =
 const DEFAULT_VIEW_STATE: MapViewState = {
   longitude: -95,
   latitude: 55,
-  zoom: 3.5,
+  zoom: 4.2,
   pitch: 0,
   bearing: 0,
 };
@@ -77,6 +67,36 @@ const isConflict = (value: unknown): value is TrajectoryMapConflictPoint => {
   );
 };
 
+type MapErrorBoundaryProps = {
+  children: ReactNode;
+};
+
+type MapErrorBoundaryState = {
+  hasError: boolean;
+};
+
+class MapErrorBoundary extends Component<
+  MapErrorBoundaryProps,
+  MapErrorBoundaryState
+> {
+  state: MapErrorBoundaryState = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex h-full w-full items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-6 text-center text-xs text-[var(--color-subtle)]">
+          Map rendering is unavailable right now.
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function TrajectoryDeckMap({
   mapData,
   activeLayers,
@@ -87,7 +107,11 @@ export function TrajectoryDeckMap({
   focusedConflict,
   resolutionPreview,
 }: TrajectoryDeckMapProps) {
-  ensureWebGL();
+  const [webglAvailable, setWebglAvailable] = useState(true);
+
+  useEffect(() => {
+    setWebglAvailable(canUseWebGL());
+  }, []);
 
   const initialView = useMemo<MapViewState>(() => {
     const source = mapData?.viewState ?? DEFAULT_VIEW_STATE;
@@ -102,18 +126,35 @@ export function TrajectoryDeckMap({
 
   const [viewState, setViewState] = useState<MapViewState>(initialView);
   const [isMounted, setIsMounted] = useState(false);
-  const [hoveredConflict, setHoveredConflict] = useState<
-    | {
-        conflictId: string;
-        flights: [string, string];
-        location?: [number, number];
-      }
-    | null
-  >(null);
+  const mapRef = useRef<MapRef | null>(null);
+  const [hoveredConflict, setHoveredConflict] = useState<{
+    conflictId: string;
+    flights: [string, string];
+    location?: [number, number];
+  } | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
+
+  useEffect(() => {
+    if (!isMounted || typeof window === "undefined") {
+      return;
+    }
+
+    const triggerResize = () => {
+      window.dispatchEvent(new Event("resize"));
+      mapRef.current?.resize();
+    };
+
+    const raf = window.requestAnimationFrame(triggerResize);
+    const timeout = window.setTimeout(triggerResize, 150);
+
+    return () => {
+      window.cancelAnimationFrame(raf);
+      window.clearTimeout(timeout);
+    };
+  }, [isMounted]);
 
   useEffect(() => {
     setViewState(initialView);
@@ -149,19 +190,6 @@ export function TrajectoryDeckMap({
     return effectiveConflict.location;
   }, [effectiveConflict?.location]);
 
-  useEffect(() => {
-    if (!focusCenter) {
-      return;
-    }
-    setViewState((prev) => ({
-      ...prev,
-      longitude: focusCenter[0],
-      latitude: focusCenter[1],
-      zoom: Math.max(prev.zoom ?? initialView.zoom, 6),
-      pitch: Math.max(prev.pitch ?? initialView.pitch ?? 0, 25),
-    }));
-  }, [focusCenter, initialView.zoom, initialView.pitch]);
-
   const highlightedFlights = useMemo(() => {
     const flightIds = new Set<string>();
     if (effectiveConflict) {
@@ -175,8 +203,9 @@ export function TrajectoryDeckMap({
 
   const focusedPaths = useMemo(() => {
     const getPathForFlight = (flightId: string) =>
-      paths.find((path) => path.id === flightId || path.callsign === flightId) ??
-      null;
+      paths.find(
+        (path) => path.id === flightId || path.callsign === flightId,
+      ) ?? null;
 
     const conflictPaths = (effectiveConflict?.flights ?? [])
       .map((flightId) => getPathForFlight(flightId))
@@ -233,7 +262,10 @@ export function TrajectoryDeckMap({
     if (!focusedPaths.conflictPaths.length) {
       return [] as TrajectoryMapPath[];
     }
-    if (!showOnlyFocused && !(enableHoverFocus && hoveredConflict && !focusedConflict)) {
+    if (
+      !showOnlyFocused &&
+      !(enableHoverFocus && hoveredConflict && !focusedConflict)
+    ) {
       return focusedPaths.conflictPaths;
     }
     const offsets: [number, number][] = [
@@ -244,15 +276,19 @@ export function TrajectoryDeckMap({
       const [lonOffset, latOffset] = offsets[index % offsets.length];
       return {
         ...path,
-        coordinates: path.coordinates.map(
-          ([lon, lat]): [number, number] => [
-            lon + lonOffset,
-            lat + latOffset,
-          ],
-        ),
+        coordinates: path.coordinates.map(([lon, lat]): [number, number] => [
+          lon + lonOffset,
+          lat + latOffset,
+        ]),
       };
     });
-  }, [focusedPaths.conflictPaths, showOnlyFocused, enableHoverFocus, hoveredConflict, focusedConflict]);
+  }, [
+    focusedPaths.conflictPaths,
+    showOnlyFocused,
+    enableHoverFocus,
+    hoveredConflict,
+    focusedConflict,
+  ]);
 
   const focusedFlightColors = useMemo(() => {
     const palette: [number, number, number, number][] = [
@@ -315,6 +351,40 @@ export function TrajectoryDeckMap({
     }
     return allMarkers.filter((marker) => marker.minute === activeMinute);
   }, [allMarkers, activeMinute, effectiveConflict, showAllConflicts]);
+
+  const isClusteredConflict = useMemo(() => {
+    if (!focusMarkers || focusMarkers.length < 2) {
+      return false;
+    }
+
+    let minDistance = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < focusMarkers.length; i += 1) {
+      for (let j = i + 1; j < focusMarkers.length; j += 1) {
+        const a = focusMarkers[i].coordinate;
+        const b = focusMarkers[j].coordinate;
+        const dx = a[0] - b[0];
+        const dy = a[1] - b[1];
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        minDistance = Math.min(minDistance, distance);
+      }
+    }
+
+    return minDistance < 0.08;
+  }, [focusMarkers]);
+
+  useEffect(() => {
+    if (!focusCenter) {
+      return;
+    }
+    setViewState((prev) => ({
+      ...prev,
+      zoom: Math.max(
+        prev.zoom ?? initialView.zoom,
+        isClusteredConflict ? 7.8 : 6,
+      ),
+      pitch: Math.max(prev.pitch ?? initialView.pitch ?? 0, 25),
+    }));
+  }, [focusCenter, initialView.zoom, initialView.pitch, isClusteredConflict]);
 
   const showTrajectories = activeLayers.includes("Trajectories");
   const showConflicts = activeLayers.includes("Conflicts");
@@ -394,7 +464,7 @@ export function TrajectoryDeckMap({
       lineWidthMinPixels: 2,
       stroked: true,
       filled: false,
-      getRadius: 28000,
+      getRadius: 20000,
       radiusUnits: "meters",
       pickable: false,
     });
@@ -501,9 +571,9 @@ export function TrajectoryDeckMap({
         return isFocused ? [255, 109, 0, 240] : [247, 201, 72, alpha];
       },
       getRadius: (point) => {
-        const baseRadius = 6000 + Math.max(0, 4 - point.horizontalNm) * 4500;
+        const baseRadius = 3800 + Math.max(0, 4 - point.horizontalNm) * 2500;
         const isFocused = point.id === effectiveConflict?.conflictId;
-        return isFocused ? baseRadius * 1.3 : baseRadius;
+        return isFocused ? baseRadius * 1.15 : baseRadius;
       },
       radiusUnits: "meters",
       pickable: true,
@@ -541,9 +611,7 @@ export function TrajectoryDeckMap({
         focusHaloLayer,
         focusIconLayer,
         planeMarkerLayer,
-      ].filter(
-        (layer): layer is NonNullable<typeof layer> => Boolean(layer),
-      ),
+      ].filter((layer): layer is NonNullable<typeof layer> => Boolean(layer)),
     [
       trajectoryLayer,
       redirectedPathLayer,
@@ -571,57 +639,71 @@ export function TrajectoryDeckMap({
     return <div className="relative h-full w-full" />;
   }
 
+  if (!webglAvailable) {
+    return (
+      <div className="flex h-full w-full items-center justify-center rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-6 text-center text-xs text-[var(--color-subtle)]">
+        WebGL is unavailable. The trajectory map can’t render on this device.
+      </div>
+    );
+  }
+
   return (
     <div className="relative h-full w-full">
-      <DeckGL
-        deviceProps={{ type: "webgl" }}
-        viewState={viewState}
-        controller={{ doubleClickZoom: false }}
-        layers={layers}
-        getTooltip={({ object }) => {
-          if (!object) {
-            return null;
-          }
-          if (isConflict(object)) {
-            const timeLabel = new Date(object.tSec * 1000)
-              .toISOString()
-              .slice(11, 19);
-            return {
-              text: `${object.flights[0]} ↔ ${object.flights[1]}
+      <MapErrorBoundary>
+        <DeckGL
+          viewState={viewState}
+          controller={{ doubleClickZoom: false }}
+          layers={layers}
+          getTooltip={({ object }) => {
+            if (!object) {
+              return null;
+            }
+            if (isConflict(object)) {
+              const timeLabel = new Date(object.tSec * 1000)
+                .toISOString()
+                .slice(11, 19);
+              return {
+                text: `${object.flights[0]} ↔ ${object.flights[1]}
 ${object.horizontalNm.toFixed(2)} nm • ${object.verticalFt.toFixed(0)} ft • ${timeLabel}Z`,
-            };
-          }
-          if (isPath(object)) {
-            return {
-              text: `${object.callsign}
+              };
+            }
+            if (isPath(object)) {
+              return {
+                text: `${object.callsign}
 ${object.passengers.toLocaleString("en-US")} pax • ${
-                object.isCargo ? "Cargo" : "Passenger"
-              }`,
-            };
+                  object.isCargo ? "Cargo" : "Passenger"
+                }`,
+              };
+            }
+            return null;
+          }}
+          onHover={({ object }) => {
+            if (!enableHoverFocus || showOnlyFocused) {
+              return;
+            }
+            if (object && isConflict(object)) {
+              setHoveredConflict({
+                conflictId: object.id,
+                flights: object.flights,
+                location: object.coordinate,
+              });
+              return;
+            }
+            setHoveredConflict(null);
+          }}
+          onViewStateChange={(event) =>
+            setViewState(event.viewState as MapViewState)
           }
-          return null;
-        }}
-        onHover={({ object }) => {
-          if (!enableHoverFocus || showOnlyFocused) {
-            return;
-          }
-          if (object && isConflict(object)) {
-            setHoveredConflict({
-              conflictId: object.id,
-              flights: object.flights,
-              location: object.coordinate,
-            });
-            return;
-          }
-          setHoveredConflict(null);
-        }}
-        onViewStateChange={(event) =>
-          setViewState(event.viewState as MapViewState)
-        }
-        style={{ position: "absolute", inset: "0" }}
-      >
-        <MapLibreMap reuseMaps mapStyle={BASEMAP_STYLE} />
-      </DeckGL>
+          style={{ position: "absolute", inset: "0" }}
+        >
+          <MapLibreMap
+            ref={mapRef}
+            reuseMaps
+            mapStyle={BASEMAP_STYLE}
+            onLoad={() => mapRef.current?.resize()}
+          />
+        </DeckGL>
+      </MapErrorBoundary>
 
       {effectiveConflict ? (
         <div className="pointer-events-none absolute top-3 left-3 rounded bg-[rgba(2,25,48,0.78)] px-3 py-2 text-[11px] text-[var(--color-muted)]">

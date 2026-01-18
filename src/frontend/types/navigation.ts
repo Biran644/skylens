@@ -6,9 +6,4 @@ export type HypermediaNavLink = {
   disabled?: boolean;
 };
 
-export type DashboardView =
-  | "overview"
-  | "data"
-  | "map"
-  | "mission-control"
-  | "timeline";
+export type DashboardView = "overview" | "data" | "mission-control";

@@ -514,156 +514,86 @@ export function TrajectoryMapShell({
               ) : null}
             </div>
 
-            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-4 text-xs text-[var(--color-muted)]">
-              <h3 className="text-sm font-semibold text-white">
-                Top trajectories by segment count
-              </h3>
-              {topFlights.length > 0 ? (
-                <ul className="mt-3 grid gap-2">
-                  {topFlights.map((flight) => {
-                    const legCount = flight.segments.length;
-                    const distanceNm = flight.segments.reduce(
-                      (acc, segment) => acc + segment.distanceNm,
-                      0,
-                    );
-                    return (
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-4 text-xs text-[var(--color-muted)]">
+                <h3 className="text-sm font-semibold text-white">
+                  Top trajectories by segment count
+                </h3>
+                {topFlights.length > 0 ? (
+                  <ul className="mt-3 grid gap-2">
+                    {topFlights.map((flight) => {
+                      const legCount = flight.segments.length;
+                      const distanceNm = flight.segments.reduce(
+                        (acc, segment) => acc + segment.distanceNm,
+                        0,
+                      );
+                      return (
+                        <li
+                          key={flight.id}
+                          className="flex flex-wrap items-center justify-between gap-2 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-[var(--color-subtle)]"
+                        >
+                          <div className="flex flex-col">
+                            <span className="text-sm font-semibold text-white">
+                              {flight.callsign}
+                            </span>
+                            <span>
+                              {flight.departureAirport} →{" "}
+                              {flight.arrivalAirport}
+                            </span>
+                          </div>
+                          <div className="flex flex-col items-end text-[11px] text-[var(--color-muted)]">
+                            <span>{legCount} segments</span>
+                            <span>{distanceNm.toFixed(0)} nm est.</span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-xs text-[var(--color-subtle)]">
+                    Flight data ready; waiting for conflict overlays.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-4 text-xs text-[var(--color-muted)]">
+                <h3 className="text-sm font-semibold text-white">
+                  Active conflict pairs
+                </h3>
+                {topConflicts.length > 0 ? (
+                  <ul className="mt-3 grid gap-2">
+                    {topConflicts.map((conflict) => (
                       <li
-                        key={flight.id}
+                        key={conflict.id}
                         className="flex flex-wrap items-center justify-between gap-2 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-[var(--color-subtle)]"
                       >
                         <div className="flex flex-col">
                           <span className="text-sm font-semibold text-white">
-                            {flight.callsign}
+                            {conflict.flightA} ↔ {conflict.flightB}
                           </span>
                           <span>
-                            {flight.departureAirport} → {flight.arrivalAirport}
+                            {conflict.minHorizontalNm.toFixed(2)} nm ·{" "}
+                            {conflict.minVerticalFt.toFixed(0)} ft sep
                           </span>
                         </div>
                         <div className="flex flex-col items-end text-[11px] text-[var(--color-muted)]">
-                          <span>{legCount} segments</span>
-                          <span>{distanceNm.toFixed(0)} nm est.</span>
+                          <span>{formatUtcTime(conflict.tStart)}</span>
+                          <span>{conflict.samples.length} samples</span>
                         </div>
                       </li>
-                    );
-                  })}
-                </ul>
-              ) : (
-                <p className="mt-2 text-xs text-[var(--color-subtle)]">
-                  Flight data ready; waiting for conflict overlays.
-                </p>
-              )}
-            </div>
-
-            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-4 text-xs text-[var(--color-muted)]">
-              <h3 className="text-sm font-semibold text-white">
-                Active conflict pairs
-              </h3>
-              {topConflicts.length > 0 ? (
-                <ul className="mt-3 grid gap-2">
-                  {topConflicts.map((conflict) => (
-                    <li
-                      key={conflict.id}
-                      className="flex flex-wrap items-center justify-between gap-2 rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-[var(--color-subtle)]"
-                    >
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-white">
-                          {conflict.flightA} ↔ {conflict.flightB}
-                        </span>
-                        <span>
-                          {conflict.minHorizontalNm.toFixed(2)} nm ·{" "}
-                          {conflict.minVerticalFt.toFixed(0)} ft sep
-                        </span>
-                      </div>
-                      <div className="flex flex-col items-end text-[11px] text-[var(--color-muted)]">
-                        <span>{formatUtcTime(conflict.tStart)}</span>
-                        <span>{conflict.samples.length} samples</span>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-2 text-xs text-[var(--color-subtle)]">
-                  No loss-of-separation events detected in the current dataset.
-                </p>
-              )}
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-xs text-[var(--color-subtle)]">
+                    No loss-of-separation events detected in the current
+                    dataset.
+                  </p>
+                )}
+              </div>
             </div>
           </>
         ) : null}
       </div>
-
-      <footer className="mt-6 flex flex-col gap-3">
-        <div className="flex items-center justify-between text-xs text-[var(--color-muted)]">
-          <span>Timeline scrubber (UTC)</span>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleRewind}
-              disabled={!canRewind}
-              className={`rounded border px-2 py-1 transition ${
-                canRewind
-                  ? "border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-azure)] hover:text-white"
-                  : "border-[var(--color-border)] text-[var(--color-subtle)] opacity-60"
-              }`}
-            >
-              ⟲ Rewind
-            </button>
-            <button
-              type="button"
-              onClick={handlePlay}
-              disabled={!canPlay}
-              className={`rounded border px-2 py-1 transition ${
-                canPlay
-                  ? "border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-azure)] hover:text-white"
-                  : "border-[var(--color-border)] text-[var(--color-subtle)] opacity-60"
-              }`}
-            >
-              ▶ Play
-            </button>
-            <button
-              type="button"
-              onClick={handlePause}
-              disabled={!canPause}
-              className={`rounded border px-2 py-1 transition ${
-                canPause
-                  ? "border-[var(--color-border)] text-[var(--color-muted)] hover:border-[var(--color-azure)] hover:text-white"
-                  : "border-[var(--color-border)] text-[var(--color-subtle)] opacity-60"
-              }`}
-            >
-              ⏸ Pause
-            </button>
-          </div>
-        </div>
-        {timelineHasData && activeRange ? (
-          <div className="flex items-center justify-between text-[11px] text-[var(--color-subtle)]">
-            <span>
-              Range {formatMinuteLabel(activeRange.start)} →{" "}
-              {formatMinuteLabel(activeRange.end)}
-            </span>
-            <span>
-              {activeBucket?.count?.toLocaleString("en-US") ?? "0"} samples at{" "}
-              {activeMinuteLabel ?? "—"}
-            </span>
-          </div>
-        ) : null}
-        <div className="relative h-2 rounded-full bg-[var(--color-surface)]">
-          {timelineHasData && activeRange && activeMinute !== null ? (
-            <div
-              className="absolute top-0 h-2 rounded-full bg-[var(--color-azure)] transition-[left,width]"
-              style={{
-                left: `${Math.max(0, Math.min(100 - highlightWidth, highlightLeft))}%`,
-                width: `${highlightWidth}%`,
-              }}
-            />
-          ) : (
-            <div className="absolute top-0 h-2 w-1/4 rounded-full bg-[var(--color-azure)] opacity-30" />
-          )}
-        </div>
-        <div className="flex justify-between text-[11px] text-[var(--color-subtle)]">
-          <span>00:00Z</span>
-          <span>12:00Z</span>
-          <span>24:00Z</span>
-        </div>
-      </footer>
 
       {isFullscreen && hasData ? (
         <div className="fixed inset-0 z-[60] bg-[rgba(3,7,18,0.92)] backdrop-blur">

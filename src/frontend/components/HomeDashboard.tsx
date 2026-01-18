@@ -6,26 +6,22 @@ import { AnalyzeConflictsResult } from "../../backend/actions/analyzeConflicts";
 import { scoreResolutionsAction } from "../../backend/actions/scoreResolutions";
 import { DashboardLayout } from "./DashboardLayout";
 import { DataDrawer } from "./DataDrawer";
+import { FlightManifest } from "./FlightManifest";
 import { FlightImportPanel } from "./FlightImportPanel";
 import { InsightsSidebar } from "./InsightsSidebar";
 import { ScenarioSummary } from "./ScenarioSummary";
 import { TrajectoryMapShell } from "./TrajectoryMapShell";
 import { ResolutionCandidate } from "../../backend/types/domain";
 import { DashboardView, HypermediaNavLink } from "../types/navigation";
-import { MissionControlSnapshot } from "./MissionControlSnapshot";
 
 type NavigationState = {
-  hasAnalysis: boolean;
   hasConflicts: boolean;
-  hasTimeline: boolean;
 };
 
 const DEFAULT_VIEW: DashboardView = "overview";
 
 const buildNavigationLinks = ({
-  hasAnalysis,
   hasConflicts,
-  hasTimeline,
 }: NavigationState): HypermediaNavLink[] => {
   const links: HypermediaNavLink[] = [
     {
@@ -39,26 +35,12 @@ const buildNavigationLinks = ({
       href: "/?view=data",
     },
     {
-      rel: "map",
-      label: "Airspace Map",
-      href: "/?view=map",
-      disabled: !hasAnalysis,
-    },
-    {
       rel: "mission-control",
       label: "Mission Control",
       href: "/?view=mission-control",
       disabled: !hasConflicts,
     },
   ];
-
-  if (hasTimeline) {
-    links.push({
-      rel: "timeline",
-      label: "Timeline",
-      href: "/?view=timeline",
-    });
-  }
 
   return links;
 };
@@ -79,13 +61,7 @@ export function HomeDashboard() {
   const scenarioName = "Demo Scenario";
   const searchParams = useSearchParams();
   const viewParam = (searchParams.get("view") ?? DEFAULT_VIEW) as DashboardView;
-  const allowedViews: DashboardView[] = [
-    "overview",
-    "data",
-    "map",
-    "mission-control",
-    "timeline",
-  ];
+  const allowedViews: DashboardView[] = ["overview", "data", "mission-control"];
   const activeView: DashboardView = allowedViews.includes(viewParam)
     ? viewParam
     : DEFAULT_VIEW;
@@ -209,6 +185,7 @@ export function HomeDashboard() {
           Import daily flight plans, detect loss-of-separation events, explore
           hotspots, and trial minimal-cost resolutions.
         </p>
+        <FlightImportPanel onAnalysis={handleAnalysis} variant="inline" />
       </section>
 
       <ScenarioSummary
@@ -216,8 +193,6 @@ export function HomeDashboard() {
         conflicts={analysis?.conflicts}
         resolutionCandidates={resolutionCandidates}
       />
-
-      <FlightImportPanel onAnalysis={handleAnalysis} />
     </>
   );
 
@@ -229,18 +204,11 @@ export function HomeDashboard() {
       mapData={analysis?.mapData}
       timelinePoints={conflictTimeline?.points}
       timelineMax={conflictTimeline?.maxCount ?? 0}
-      focusedConflict={focusedConflict}
-      focusedResolution={focusedResolution}
+      focusedConflict={activeView === "overview" ? null : focusedConflict}
+      focusedResolution={activeView === "overview" ? null : focusedResolution}
     />
   );
-  const missionControlSnapshot = (
-    <MissionControlSnapshot
-      summary={analysis?.summary}
-      conflicts={analysis?.conflicts}
-      resolutionCandidates={resolutionCandidates}
-      scoringResolutions={isScoring}
-    />
-  );
+  const missionControlSnapshot = null;
 
   const missionControlFull = (
     <InsightsSidebar
@@ -255,22 +223,25 @@ export function HomeDashboard() {
     />
   );
   const bottomDrawer = (
-    <DataDrawer
-      timelinePoints={conflictTimeline?.points}
-      timelineMax={conflictTimeline?.maxCount}
-      totalSamples={conflictTimeline?.totalSamples}
-    />
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <FlightManifest flights={analysis?.flights} />
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-panel)] p-4">
+        <DataDrawer
+          timelinePoints={conflictTimeline?.points}
+          timelineMax={conflictTimeline?.maxCount}
+          totalSamples={conflictTimeline?.totalSamples}
+        />
+      </div>
+    </div>
   );
 
   const navigationLinks = useMemo(() => {
     const state: NavigationState = {
-      hasAnalysis: Boolean(analysis),
       hasConflicts: Boolean(analysis?.conflicts?.length),
-      hasTimeline: Boolean(conflictTimeline),
     };
 
     return buildNavigationLinks(state);
-  }, [analysis, conflictTimeline]);
+  }, [analysis]);
 
   return (
     <DashboardLayout
