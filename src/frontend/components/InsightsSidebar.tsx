@@ -118,9 +118,18 @@ export function InsightsSidebar({
   >(null);
   const [retryCount, setRetryCount] = useState(0);
   const [cooldownUntil, setCooldownUntil] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const explanationCacheRef = useRef<
     Map<string, { explanation: string; solution?: string | null }>
   >(new Map());
+
+  useEffect(() => {
+    if (!cooldownUntil) {
+      return;
+    }
+    const timerId = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timerId);
+  }, [cooldownUntil]);
 
   const conflictList = useMemo(() => conflicts ?? [], [conflicts]);
   const orderedConflicts = useMemo(
@@ -392,7 +401,7 @@ export function InsightsSidebar({
       });
 
     return () => controller.abort();
-  }, [explanationRequestKey, selectedConflict, selectedResolution, retryCount]);
+  }, [cooldownUntil, explanationRequestKey, selectedConflict, selectedResolution, retryCount]);
 
   const missionMapLayers = useMemo<LayerKey[]>(
     () => ["Trajectories", "Conflicts"],
@@ -747,7 +756,7 @@ export function InsightsSidebar({
                                 setRetryCount((count) => count + 1)
                               }
                               disabled={Boolean(
-                                cooldownUntil && Date.now() < cooldownUntil,
+                                cooldownUntil && now < cooldownUntil,
                               )}
                               className="rounded border border-[rgba(255,255,255,0.12)] px-2 py-0.5 text-[9px] uppercase tracking-[0.15em] text-[var(--color-subtle)] transition hover:border-[var(--color-azure)] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
                             >
@@ -769,7 +778,7 @@ export function InsightsSidebar({
                           </p>
                         ) : (
                           <p className="mt-2 text-[var(--color-subtle)]">
-                            {cooldownUntil && Date.now() < cooldownUntil
+                            {cooldownUntil && now < cooldownUntil
                               ? "Rate limited. Try again shortly."
                               : "No explanation available."}
                           </p>
