@@ -24,6 +24,7 @@ export function FlightImportPanel({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSampleLoading, setIsSampleLoading] = useState(false);
 
   const handleFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -69,6 +70,23 @@ export function FlightImportPanel({
         );
       }
     });
+  };
+
+  const handleSampleLoad = async (path: string) => {
+    setIsSampleLoading(true);
+    try {
+      const response = await fetch(path);
+      if (!response.ok) {
+        throw new Error("Failed to load sample data");
+      }
+      const text = await response.text();
+      setInputText(text);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load sample data");
+    } finally {
+      setIsSampleLoading(false);
+    }
   };
 
   const content = (
@@ -129,8 +147,32 @@ export function FlightImportPanel({
                   type="file"
                   accept=".json,.csv,application/json,text/csv"
                   onChange={handleFileChange}
-                  className="w-full rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-white focus:border-[var(--color-azure)] focus:outline-none"
+                  className="w-full rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-subtle)] focus:border-[var(--color-azure)] focus:outline-none file:mr-3 file:rounded file:border-0 file:bg-[var(--color-azure-soft)] file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-[var(--color-azure)] hover:file:brightness-110"
                 />
+                <div className="flex flex-wrap items-center gap-2 rounded-md border border-[rgba(0,159,223,0.45)] bg-[rgba(0,159,223,0.12)] px-2 py-2 text-[11px] text-[var(--color-subtle)] shadow-[0_0_0_1px_rgba(0,159,223,0.08)]">
+                  <span className="rounded-full bg-[rgba(0,159,223,0.22)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-[var(--color-azure)]">
+                    Sample data
+                  </span>
+                  <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--color-azure)]">
+                    Recommended
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleSampleLoad("/sample-data/canadian_flights_250.json")}
+                    disabled={isSampleLoading || isPending}
+                    className="rounded border border-[var(--color-azure)] bg-[rgba(0,159,223,0.18)] px-3 py-1 text-[11px] font-semibold text-[var(--color-azure)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSampleLoading ? "Loading…" : "Load 250 flights"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSampleLoad("/sample-data/canadian_flights_1000.json")}
+                    disabled={isSampleLoading || isPending}
+                    className="rounded border border-[var(--color-azure)] bg-[rgba(0,159,223,0.18)] px-3 py-1 text-[11px] font-semibold text-[var(--color-azure)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSampleLoading ? "Loading…" : "Load 1000 flights"}
+                  </button>
+                </div>
               </div>
 
               <div className="flex flex-col gap-2">

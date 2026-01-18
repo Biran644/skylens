@@ -218,15 +218,6 @@ export function TrajectoryMapShell({
     return () => window.clearInterval(interval);
   }, [isPlaying, activeRange, timelineHasData, rangeKey]);
 
-  const activeBucket = useMemo(() => {
-    if (activeMinute === null) {
-      return null;
-    }
-    return (
-      timelineBuckets.find((bucket) => bucket.minute === activeMinute) ?? null
-    );
-  }, [timelineBuckets, activeMinute]);
-
   const currentConflictSample = useMemo(() => {
     if (!focusedConflict || activeMinute === null) {
       return null;
@@ -271,44 +262,8 @@ export function TrajectoryMapShell({
     };
   }, [focusedResolution]);
 
-  const timelineSpan = activeRange
-    ? Math.max(activeRange.end - activeRange.start, 0)
-    : 0;
-  const highlightWidth = activeRange
-    ? Math.min(12, Math.max(1.5, 100 / (timelineSpan + 1)))
-    : 0;
-  const highlightLeft =
-    activeRange && activeMinute !== null && timelineSpan >= 0
-      ? ((activeMinute - activeRange.start) /
-          Math.max(timelineSpan === 0 ? 1 : timelineSpan, 1)) *
-        (100 - highlightWidth)
-      : 0;
   const activeMinuteLabel =
     activeMinute !== null ? formatMinuteLabel(activeMinute) : null;
-  const canRewind = Boolean(
-    activeRange && activeMinute !== null && activeMinute > activeRange.start,
-  );
-  const canPlay = playbackEnabled && !isPlaying;
-  const canPause = playbackEnabled && isPlaying;
-
-  const handleRewind = useCallback(() => {
-    if (!activeRange) {
-      return;
-    }
-    setPlaybackState({ key: rangeKey, playing: false });
-    setCursorMinute(activeRange.start);
-  }, [activeRange, rangeKey]);
-
-  const handlePlay = useCallback(() => {
-    if (!activeRange || !timelineHasData) {
-      return;
-    }
-    setPlaybackState({ key: rangeKey, playing: true });
-  }, [activeRange, timelineHasData, rangeKey]);
-
-  const handlePause = useCallback(() => {
-    setPlaybackState({ key: rangeKey, playing: false });
-  }, [rangeKey]);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-panel)] p-6 shadow-[0_15px_45px_rgba(0,8,22,0.45)]">
